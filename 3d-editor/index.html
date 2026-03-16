@@ -20,9 +20,14 @@
       <span id="active-tool-label">Select</span>
     </div>
     <div id="header-right">
+      <button id="btn-mobile-scene" class="btn-header mobile-only" aria-label="Open scene panel">Scene</button>
+      <button id="btn-mobile-props" class="btn-header mobile-only" aria-label="Open properties panel">Props</button>
+      <button id="btn-mobile-terminal" class="btn-header mobile-only" aria-label="Toggle terminal">Term</button>
       <button id="btn-export-stl" class="btn-header btn-accent">Export STL</button>
     </div>
   </header>
+
+  <div id="mobile-backdrop"></div>
 
   <!-- ══════════════════════════════════════
        MAIN LAYOUT: [Hierarchy | Viewport+Terminal | Properties]

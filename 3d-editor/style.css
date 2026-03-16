@@ -500,6 +500,16 @@ html, body {
   font-style: italic;
 }
 
+.mobile-only { display: none; }
+
+#mobile-backdrop {
+  display: none;
+  position: fixed;
+  inset: var(--header-h) 0 0 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 30;
+}
+
 /* ── Right Panel: Properties ────────────────────────────────── */
 #properties-panel {
   background: var(--bg-panel);
@@ -715,4 +725,120 @@ html, body {
 /* Camera section */
 #section-camera {
   border-bottom: none;
+}
+
+@media (max-width: 900px) {
+  html, body {
+    overflow: hidden;
+    font-size: 13px;
+  }
+
+  #app-header {
+    padding: 0 8px;
+  }
+
+  #header-center,
+  .logo-sub {
+    display: none;
+  }
+
+  #header-right {
+    display: flex;
+    gap: 6px;
+  }
+
+  .mobile-only {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #app-layout {
+    grid-template-columns: 1fr;
+    height: calc(100vh - var(--header-h));
+    position: relative;
+  }
+
+  #viewport-column {
+    height: 100%;
+    grid-template-rows: 1fr 0;
+  }
+
+  body.show-terminal #viewport-column {
+    grid-template-rows: 1fr min(38vh, 240px);
+  }
+
+  #terminal-panel {
+    min-height: 0;
+  }
+
+  #viewport-wrapper,
+  #viewport-canvas,
+  #viewport-canvas canvas {
+    touch-action: none;
+  }
+
+  #view-buttons,
+  #transform-buttons,
+  #wireframe-toggle-wrapper {
+    top: 6px;
+  }
+
+  .btn-view,
+  .btn-transform,
+  #btn-wireframe {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  #viewport-stats,
+  #axis-gizmo {
+    display: none;
+  }
+
+  #hierarchy-panel,
+  #properties-panel {
+    position: fixed;
+    top: var(--header-h);
+    bottom: 0;
+    width: min(92vw, 340px);
+    z-index: 40;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    transition: transform 0.2s ease;
+  }
+
+  #hierarchy-panel {
+    left: 0;
+    transform: translateX(-102%);
+    border-right: 1px solid var(--border);
+  }
+
+  #properties-panel {
+    right: 0;
+    transform: translateX(102%);
+    border-left: 1px solid var(--border);
+  }
+
+  body.show-hierarchy #hierarchy-panel {
+    transform: translateX(0);
+  }
+
+  body.show-properties #properties-panel {
+    transform: translateX(0);
+  }
+
+  body.show-hierarchy #mobile-backdrop,
+  body.show-properties #mobile-backdrop {
+    display: block;
+  }
+
+  .prop-row {
+    min-height: 34px;
+  }
+
+  .btn-action,
+  .btn-add-obj,
+  .btn-header {
+    min-height: 32px;
+  }
 }

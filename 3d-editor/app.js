@@ -81,6 +81,7 @@ function init() {
   const propertiesPanel  = new PropertiesPanel(commandParser, selectionManager, cameraManager);
   const sceneHierarchy   = new SceneHierarchy(objectManager, selectionManager, commandParser);
   const viewportOverlay  = new ViewportOverlay(commandParser, objectManager, selectionManager);
+  setupMobileLayout();
 
   /* ══ 8. Render Loop ════════════════════════════════════════ */
 
@@ -105,4 +106,47 @@ function init() {
   }
 
   console.log('[RenderHub] 3D Editor initialized.');
+}
+
+function setupMobileLayout() {
+  const btnScene = document.getElementById('btn-mobile-scene');
+  const btnProps = document.getElementById('btn-mobile-props');
+  const btnTerm = document.getElementById('btn-mobile-terminal');
+  const backdrop = document.getElementById('mobile-backdrop');
+
+  if (!btnScene || !btnProps || !btnTerm || !backdrop) return;
+
+  const closeDrawers = () => {
+    document.body.classList.remove('show-hierarchy');
+    document.body.classList.remove('show-properties');
+  };
+
+  btnScene.addEventListener('click', () => {
+    const isOpen = document.body.classList.contains('show-hierarchy');
+    closeDrawers();
+    if (!isOpen) document.body.classList.add('show-hierarchy');
+  });
+
+  btnProps.addEventListener('click', () => {
+    const isOpen = document.body.classList.contains('show-properties');
+    closeDrawers();
+    if (!isOpen) document.body.classList.add('show-properties');
+  });
+
+  btnTerm.addEventListener('click', () => {
+    document.body.classList.toggle('show-terminal');
+    closeDrawers();
+  });
+
+  backdrop.addEventListener('click', () => {
+    closeDrawers();
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900) {
+      document.body.classList.remove('show-hierarchy');
+      document.body.classList.remove('show-properties');
+      document.body.classList.remove('show-terminal');
+    }
+  });
 }
