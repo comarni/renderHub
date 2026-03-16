@@ -4,12 +4,15 @@
 
 import * as THREE from 'three';
 import { EventBus } from '../core/EventBus.js';
+import { NLPParser }            from '../ai/NLPParser.js';
+import { ProceduralGenerator }  from '../ai/ProceduralGenerator.js';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 
 const HELP_TEXT = `
 Available commands:
+  gen <description>     — gen perro grande rojo | generame un coche azul
   add <type> [name]     — add cube | sphere | cylinder | plane
   select <name|all>     — select Cube.001
   deselect              — clear selection
@@ -52,6 +55,10 @@ export class CommandParser {
     this.onViewChange     = null;  // (mode) => void
     this.onWireframe      = null;  // () => void
     this.onTransformMode  = null;  // (mode) => void
+
+    // AI generation modules (wired in app.js)
+    this._nlp = new NLPParser();
+    this._gen = new ProceduralGenerator();
 
     this._history   = [];  // undo stack
     this._redoStack = [];  // redo stack
@@ -96,8 +103,14 @@ export class CommandParser {
         case 'undo':       return this.undo();
         case 'redo':       return this.redo();
         case 'help':       return { success: true, message: HELP_TEXT };
-        default:
+        // Natural-language generation: explicit 'gen' command
+        case 'gen':        return this._generate(args.join(' '));
+        default: {
+          // Try NLP before giving up — catches "generame un perro" etc.
+          const nlpResult = this._generate(trimmed);
+          if (nlpResult.success) return nlpResult;
           return { success: false, message: `Unknown command: "${cmd}". Type help for list.` };
+        }
       }
     } catch (e) {
       return { success: false, message: `Error: ${e.message}` };
@@ -131,6 +144,52 @@ export class CommandParser {
   }
 
   /* ══ Command implementations ══════════════════════════════════ */
+
+  /* ══ AI / Natural language generation ═══════════════════════ */
+
+  _generate(text) {
+    const parsed = this._nlp.parse(text);
+    if (!parsed) {
+      const supported = this._nlp.supportedObjects.join(', ');
+      return {
+        success: false,
+        message: `I don't recognise an object in: "${text}"\nSupported: ${supported}`,
+      };
+    }
+
+    const { type, scale, color, count } = parsed;
+    const names = [];
+    const ids   = [];
+    const spacing = 2.2 * (scale || 1);
+
+    for (let i = 0; i < count; i++) {
+      const group = this._gen.generate(type, { color: color || undefined });
+
+      // Spread multiple objects in a row, centred at origin
+      if (count > 1) {
+        group.position.x = (i - (count - 1) / 2) * spacing;
+      }
+
+      if (scale !== 1) group.scale.setScalar(scale);
+
+      const name = this.objs._generateName(type);
+      const rec  = this.objs.addGroup(group, name, type);
+      names.push(rec.name);
+      ids.push(rec.id);
+    }
+
+    // Select all generated objects
+    this.sel.selectByIds(ids, false);
+
+    const colorInfo = color  ? ` color:${color}`   : '';
+    const scaleInfo = scale !== 1 ? ` scale:×${scale}` : '';
+    return {
+      success: true,
+      message: `✓ Generated: ${names.join(', ')}${colorInfo}${scaleInfo}`,
+    };
+  }
+
+  /* ══ Command implementations ═════════════════════════════════ */
 
   _add(args) {
     const typeArg = (args[0] || '').toLowerCase();

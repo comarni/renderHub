@@ -38,9 +38,45 @@ export class ObjectManager {
 
   _generateName(type) {
     this._counter[type] = (this._counter[type] || 0) + 1;
-    const labels = { box: 'Cube', sphere: 'Sphere', cylinder: 'Cylinder', plane: 'Plane' };
+    const labels = {
+      box: 'Cube', sphere: 'Sphere', cylinder: 'Cylinder', plane: 'Plane',
+      dog: 'Dog', cat: 'Cat', car: 'Car', house: 'House',
+      tree: 'Tree', chair: 'Chair', table: 'Table', robot: 'Robot', human: 'Human',
+    };
     const n = this._counter[type];
-    return `${labels[type] || type}.${String(n).padStart(3, '0')}`;
+    const label = labels[type] || (type.charAt(0).toUpperCase() + type.slice(1));
+    return `${label}.${String(n).padStart(3, '0')}`;
+  }
+
+  /**
+   * Register a pre-built THREE.Group (from ProceduralGenerator) as an editor object.
+   * @param {THREE.Group}  group
+   * @param {string}       displayName
+   * @param {string}       type
+   * @returns {ObjectRecord}
+   */
+  addGroup(group, displayName, type) {
+    const id = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    group.name                = displayName;
+    group.userData.editorId   = id;
+    group.userData.editorName = displayName;
+    group.userData.editorType = type;
+    group.userData.isGroup    = true;
+
+    group.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow    = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    const record = { id, name: displayName, type, mesh: group, material: null };
+    this.objects.set(id, record);
+    this.scene.add(group);
+
+    EventBus.emit('state:changed', { type: 'scene' });
+    return record;
   }
 
   /* ── Public API ───────────────────────────────────────────── */
