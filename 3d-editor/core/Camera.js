@@ -44,6 +44,17 @@ export class CameraManager {
     this.controls.panSpeed = 0.8;
     this.controls.target.set(0, 0, 0);
     this.controls.update();
+
+    // Touch-first tuning for phones/tablets
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+      this.controls.enablePan = true;
+      this.controls.rotateSpeed = 0.9;
+      this.controls.zoomSpeed = 1.0;
+      this.controls.panSpeed = 0.9;
+      this.controls.dampingFactor = 0.08;
+      this.controls.touches.ONE = THREE.TOUCH.ROTATE;
+      this.controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+    }
   }
 
   /** Camera currently used for rendering */

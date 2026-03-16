@@ -510,6 +510,10 @@ html, body {
   z-index: 30;
 }
 
+#mobile-dock {
+  display: none;
+}
+
 /* ── Right Panel: Properties ────────────────────────────────── */
 #properties-panel {
   background: var(--bg-panel);
@@ -755,7 +759,7 @@ html, body {
 
   #app-layout {
     grid-template-columns: 1fr;
-    height: calc(100vh - var(--header-h));
+    height: calc(100dvh - var(--header-h));
     position: relative;
   }
 
@@ -794,6 +798,45 @@ html, body {
   #viewport-stats,
   #axis-gizmo {
     display: none;
+  }
+
+  #mobile-dock {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    padding: 10px;
+    background: rgba(20, 20, 20, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    pointer-events: all;
+  }
+
+  .mobile-dock-btn {
+    min-height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border-light);
+    background: rgba(35, 35, 35, 0.95);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+  }
+
+  .mobile-dock-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(232, 125, 13, 0.15);
+  }
+
+  .mobile-dock-btn.danger {
+    border-color: rgba(230, 80, 80, 0.7);
+    color: #ff9a9a;
   }
 
   #hierarchy-panel,
@@ -840,5 +883,13 @@ html, body {
   .btn-add-obj,
   .btn-header {
     min-height: 32px;
+  }
+
+  #terminal-output {
+    font-size: 12px;
+  }
+
+  #terminal-input {
+    font-size: 12px;
   }
 }

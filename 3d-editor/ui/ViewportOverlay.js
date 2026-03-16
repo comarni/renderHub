@@ -23,6 +23,7 @@ export class ViewportOverlay {
     this._setupExportButton();
     this._setupStats();
     this._setupKeyboardShortcuts();
+    this._setupMobileDock();
 
     // Update active tool label
     EventBus.on('state:changed', () => this._updateStats());
@@ -173,6 +174,41 @@ export class ViewportOverlay {
           if (e.ctrlKey) { e.preventDefault(); this.parser.execute('view perspective'); }
           break;
       }
+    });
+  }
+
+  _setupMobileDock() {
+    const dockButtons = document.querySelectorAll('#mobile-dock .mobile-dock-btn');
+    if (!dockButtons.length) return;
+
+    const haptic = () => {
+      if (navigator.vibrate) navigator.vibrate(8);
+    };
+
+    dockButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const cmd = btn.dataset.cmd;
+        const mode = btn.dataset.mode;
+
+        if (cmd) {
+          this.parser.execute(cmd);
+          haptic();
+          return;
+        }
+
+        if (mode) {
+          this.sel.setMode(mode);
+          this._setActiveTransformBtn(mode);
+          this._setActiveMobileModeBtn(mode);
+          haptic();
+        }
+      });
+    });
+  }
+
+  _setActiveMobileModeBtn(mode) {
+    document.querySelectorAll('#mobile-dock .mobile-dock-btn.mode').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
     });
   }
 }
