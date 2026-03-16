@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RenderHub 3D Editor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════
+       HEADER
+  ══════════════════════════════════════ -->
+  <header id="app-header">
+    <div id="header-left">
+      <span class="logo">RenderHub</span>
+      <span class="logo-sub">3D Editor</span>
+    </div>
+    <div id="header-center">
+      <span id="active-tool-label">Select</span>
+    </div>
+    <div id="header-right">
+      <button id="btn-export-stl" class="btn-header btn-accent">Export STL</button>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════
+       MAIN LAYOUT: [Hierarchy | Viewport+Terminal | Properties]
+  ══════════════════════════════════════ -->
+  <div id="app-layout">
+
+    <!-- LEFT PANEL: Scene Hierarchy -->
+    <aside id="hierarchy-panel">
+      <div class="panel-header">
+        <span>Scene</span>
+        <span id="obj-count" class="panel-count">0</span>
+      </div>
+      <div id="hierarchy-list"></div>
+      <div id="hierarchy-footer">
+        <button class="btn-add-obj" data-type="box" title="Add Cube">&#9633; Cube</button>
+        <button class="btn-add-obj" data-type="sphere" title="Add Sphere">&#9679; Sphere</button>
+        <button class="btn-add-obj" data-type="cylinder" title="Add Cylinder">&#9679; Cylinder</button>
+        <button class="btn-add-obj" data-type="plane" title="Add Plane">&#9644; Plane</button>
+      </div>
+    </aside>
+
+    <!-- CENTER: Viewport + Terminal -->
+    <div id="viewport-column">
+
+      <!-- 3D VIEWPORT -->
+      <div id="viewport-wrapper">
+        <div id="viewport-canvas"></div>
+
+        <!-- Overlay (pointer-events:none so mouse passes to canvas) -->
+        <div id="viewport-overlay">
+
+          <!-- View mode buttons -->
+          <div id="view-buttons">
+            <button class="btn-view active" data-view="perspective">Persp</button>
+            <button class="btn-view" data-view="top">Top</button>
+            <button class="btn-view" data-view="front">Front</button>
+            <button class="btn-view" data-view="right">Right</button>
+          </div>
+
+          <!-- Transform mode buttons -->
+          <div id="transform-buttons">
+            <button class="btn-transform active" data-mode="translate" title="Move (G)">Move</button>
+            <button class="btn-transform" data-mode="rotate" title="Rotate (R)">Rotate</button>
+            <button class="btn-transform" data-mode="scale" title="Scale (S)">Scale</button>
+          </div>
+
+          <!-- Wireframe toggle -->
+          <div id="wireframe-toggle-wrapper">
+            <button id="btn-wireframe" title="Toggle Wireframe">Wireframe</button>
+          </div>
+
+          <!-- Stats -->
+          <div id="viewport-stats">
+            <span id="stat-objects">Objects: 0</span>
+            <span id="stat-tris">Tris: 0</span>
+          </div>
+
+          <!-- Axis gizmo corner (visual only) -->
+          <div id="axis-gizmo">
+            <span class="axis x">X</span>
+            <span class="axis y">Y</span>
+            <span class="axis z">Z</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- TERMINAL PANEL -->
+      <div id="terminal-panel">
+        <div class="panel-header terminal-header">
+          <span>Terminal</span>
+          <button id="btn-clear-terminal" class="btn-tiny">Clear</button>
+        </div>
+        <div id="terminal-output"></div>
+        <div id="terminal-input-row">
+          <span class="terminal-prompt">&gt;</span>
+          <input
+            id="terminal-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Type a command... (help)"
+          />
+        </div>
+      </div>
+
+    </div><!-- /viewport-column -->
+
+    <!-- RIGHT PANEL: Properties -->
+    <aside id="properties-panel">
+
+      <!-- No selection state -->
+      <div id="props-empty">
+        <p>Select an object<br/>or type <code>add cube</code></p>
+      </div>
+
+      <!-- Properties when object is selected -->
+      <div id="props-content" class="hidden">
+
+        <!-- Object name -->
+        <div class="panel-section" id="section-object">
+          <div class="panel-header">Object</div>
+          <div class="prop-row">
+            <label>Name</label>
+            <input type="text" id="prop-name" class="prop-input-full" />
+          </div>
+          <div class="prop-row">
+            <label>Type</label>
+            <span id="prop-type" class="prop-value-text">—</span>
+          </div>
+        </div>
+
+        <!-- Transform -->
+        <div class="panel-section" id="section-transform">
+          <div class="panel-header collapsible" data-target="transform-body">Transform</div>
+          <div id="transform-body">
+            <!-- Position -->
+            <div class="prop-group-label">Position</div>
+            <div class="prop-row prop-xyz">
+              <label class="axis-label x">X</label>
+              <input type="number" id="pos-x" class="prop-input" step="0.1" />
+              <label class="axis-label y">Y</label>
+              <input type="number" id="pos-y" class="prop-input" step="0.1" />
+              <label class="axis-label z">Z</label>
+              <input type="number" id="pos-z" class="prop-input" step="0.1" />
+            </div>
+            <!-- Rotation -->
+            <div class="prop-group-label">Rotation (deg)</div>
+            <div class="prop-row prop-xyz">
+              <label class="axis-label x">X</label>
+              <input type="number" id="rot-x" class="prop-input" step="1" />
+              <label class="axis-label y">Y</label>
+              <input type="number" id="rot-y" class="prop-input" step="1" />
+              <label class="axis-label z">Z</label>
+              <input type="number" id="rot-z" class="prop-input" step="1" />
+            </div>
+            <!-- Scale -->
+            <div class="prop-group-label">Scale</div>
+            <div class="prop-row prop-xyz">
+              <label class="axis-label x">X</label>
+              <input type="number" id="scl-x" class="prop-input" step="0.1" min="0.01" />
+              <label class="axis-label y">Y</label>
+              <input type="number" id="scl-y" class="prop-input" step="0.1" min="0.01" />
+              <label class="axis-label z">Z</label>
+              <input type="number" id="scl-z" class="prop-input" step="0.1" min="0.01" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Material -->
+        <div class="panel-section" id="section-material">
+          <div class="panel-header collapsible" data-target="material-body">Material</div>
+          <div id="material-body">
+            <div class="prop-row">
+              <label>Color</label>
+              <div class="color-row">
+                <input type="color" id="prop-color" class="prop-color-picker" />
+                <input type="text" id="prop-color-hex" class="prop-input prop-color-hex" maxlength="7" placeholder="#888888" />
+              </div>
+            </div>
+            <div class="prop-row">
+              <label>Preset</label>
+              <select id="prop-material-preset" class="prop-select">
+                <option value="plastic">Plastic</option>
+                <option value="metal">Metal</option>
+                <option value="matte">Matte</option>
+                <option value="glass">Glass</option>
+              </select>
+            </div>
+            <div class="prop-row">
+              <label>Roughness</label>
+              <input type="range" id="prop-roughness" min="0" max="1" step="0.01" class="prop-slider" />
+              <span id="prop-roughness-val" class="prop-val">0.50</span>
+            </div>
+            <div class="prop-row">
+              <label>Metalness</label>
+              <input type="range" id="prop-metalness" min="0" max="1" step="0.01" class="prop-slider" />
+              <span id="prop-metalness-val" class="prop-val">0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="panel-section" id="section-actions">
+          <div class="panel-header">Actions</div>
+          <div class="action-buttons">
+            <button id="btn-duplicate" class="btn-action">Duplicate</button>
+            <button id="btn-focus" class="btn-action">Focus</button>
+            <button id="btn-delete" class="btn-action btn-danger">Delete</button>
+          </div>
+        </div>
+
+      </div><!-- /props-content -->
+
+      <!-- Camera settings -->
+      <div class="panel-section" id="section-camera">
+        <div class="panel-header collapsible" data-target="camera-body">Camera</div>
+        <div id="camera-body">
+          <div class="prop-row">
+            <label>FOV</label>
+            <input type="range" id="cam-fov" min="20" max="120" step="1" class="prop-slider" value="75" />
+            <span id="cam-fov-val" class="prop-val">75</span>
+          </div>
+          <div class="prop-row">
+            <label>Near</label>
+            <input type="number" id="cam-near" class="prop-input" value="0.1" step="0.1" min="0.01" />
+          </div>
+          <div class="prop-row">
+            <label>Far</label>
+            <input type="number" id="cam-far" class="prop-input" value="1000" step="10" />
+          </div>
+          <div class="prop-row">
+            <button id="btn-reset-camera" class="btn-action" style="width:100%">Reset View</button>
+          </div>
+        </div>
+      </div>
+
+    </aside><!-- /properties-panel -->
+
+  </div><!-- /app-layout -->
+
+  <!-- Three.js via importmap (no bundler) — same pattern as threejs-demo -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three":          "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
