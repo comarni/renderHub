@@ -9,6 +9,7 @@
 
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader }  from 'three/addons/loaders/OBJLoader.js';
+import { STLLoader }  from 'three/addons/loaders/STLLoader.js';
 import * as THREE     from 'three';
 import { EventBus }   from '../core/EventBus.js';
 
@@ -20,6 +21,7 @@ export class ModelImporter {
     this.objs  = objectManager;
     this._gltf = new GLTFLoader();
     this._obj  = new OBJLoader();
+    this._stl  = new STLLoader();
 
     this._setupDragDrop();
   }
@@ -30,7 +32,7 @@ export class ModelImporter {
   openPicker() {
     const input = document.createElement('input');
     input.type   = 'file';
-    input.accept = '.gltf,.glb,.obj';
+    input.accept = '.gltf,.glb,.obj,.stl';
 
     input.addEventListener('change', () => {
       const file = input.files[0];
@@ -61,11 +63,11 @@ export class ModelImporter {
       e.preventDefault();
       viewport.classList.remove('drag-over');
       const files = [...e.dataTransfer.files];
-      const supported = files.filter(f => /\.(gltf|glb|obj)$/i.test(f.name));
+      const supported = files.filter(f => /\.(gltf|glb|obj|stl)$/i.test(f.name));
       if (!supported.length) {
         EventBus.emit('terminal:log', {
           type: 'error',
-          message: 'Drop a .gltf, .glb, or .obj file to import it.',
+          message: 'Drop a .gltf, .glb, .obj, or .stl file to import it.',
         });
         return;
       }
@@ -89,6 +91,8 @@ export class ModelImporter {
       this._loadGLTF(url, base, file.name);
     } else if (ext === 'obj') {
       this._loadOBJ(url, base, file.name);
+    } else if (ext === 'stl') {
+      this._loadSTL(url, base, file.name);
     }
   }
 
@@ -144,6 +148,46 @@ export class ModelImporter {
         this._centerAndFloor(group);
         const name = this._uniqueName(baseName);
         const rec  = this.objs.addGroup(group, name, 'obj');
+
+        EventBus.emit('terminal:log', {
+          type: 'info',
+          message: `✓ Imported "${originalName}" as "${name}"`,
+        });
+        EventBus.emit('state:changed', { type: 'scene' });
+      },
+      undefined,
+      err => {
+        URL.revokeObjectURL(url);
+        EventBus.emit('terminal:log', {
+          type: 'error',
+          message: `Failed to import "${originalName}": ${err.message || err}`,
+        });
+      }
+    );
+  }
+
+  _loadSTL(url, baseName, originalName) {
+    this._stl.load(
+      url,
+      geometry => {
+        URL.revokeObjectURL(url);
+
+        geometry.computeVertexNormals();
+        geometry.center();
+
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x909090,
+          roughness: 0.5,
+          metalness: 0.0,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        this._centerAndFloor(mesh);
+        const name = this._uniqueName(baseName);
+        this.objs.addGroup(mesh, name, 'stl');
 
         EventBus.emit('terminal:log', {
           type: 'info',

@@ -7,6 +7,7 @@ import { EventBus }            from '../core/EventBus.js';
 import { NLPParser }           from '../ai/NLPParser.js';
 import { ProceduralGenerator } from '../ai/ProceduralGenerator.js';
 import { SceneSerializer }     from '../io/SceneSerializer.js';
+import { MATERIAL_PRESETS }    from '../objects/MaterialManager.js';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -16,7 +17,7 @@ Available commands:
   gen <description>     — gen perro grande rojo | generame un coche azul
   save [name]           — save scene as .hub file
   load                  — load .hub file (opens file picker)
-  import                — import GLTF / OBJ model (opens file picker)
+  import                — import GLTF / GLB / OBJ / STL model (opens file picker)
   add <type> [name]     — add cube | sphere | cylinder | plane
   select <name|all>     — select Cube.001
   deselect              — clear selection
@@ -345,7 +346,9 @@ export class CommandParser {
       return { success: false, message: `Invalid color: "${hex}". Use format #rrggbb` };
     }
 
-    const prevColor = '#' + rec.mesh.material.color.getHexString();
+    const prevMat = this.mats.getPrimaryMaterial(rec.mesh);
+    if (!prevMat?.color) return { success: false, message: `No editable material on "${rec.name}"` };
+    const prevColor = '#' + prevMat.color.getHexString();
     this.mats.applyColor(rec.mesh, hex);
 
     this._pushHistory(
@@ -361,7 +364,7 @@ export class CommandParser {
     const rec = this._requireSelection();
     if (rec._error) return rec;
     const preset = (args[0] || '').toLowerCase();
-    const valid = ['plastic', 'metal', 'matte', 'glass'];
+    const valid = Object.keys(MATERIAL_PRESETS);
     if (!valid.includes(preset)) {
       return { success: false, message: `Unknown preset "${preset}". Use: ${valid.join(', ')}` };
     }

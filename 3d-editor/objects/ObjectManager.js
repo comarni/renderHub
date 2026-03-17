@@ -68,6 +68,9 @@ export class ObjectManager {
       if (child.isMesh) {
         child.castShadow    = true;
         child.receiveShadow = true;
+        child.userData.editorId   = id;
+        child.userData.editorName = displayName;
+        child.userData.editorType = type;
       }
     });
 
@@ -130,16 +133,12 @@ export class ObjectManager {
     const src = this.objects.get(id);
     if (!src) throw new Error(`Object not found: ${id}`);
 
-    const geo  = src.mesh.geometry.clone();
-    const mat  = src.mesh.material.clone();
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = this._cloneObject3D(src.mesh);
 
     // Copy transform, offset slightly so duplicate is visible
     mesh.position.copy(src.mesh.position).add(new THREE.Vector3(0.3, 0, 0.3));
     mesh.rotation.copy(src.mesh.rotation);
     mesh.scale.copy(src.mesh.scale);
-    mesh.castShadow    = true;
-    mesh.receiveShadow = true;
 
     const newId   = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const newName = src.name + '.copy';
@@ -148,8 +147,17 @@ export class ObjectManager {
     mesh.userData.editorId   = newId;
     mesh.userData.editorName = newName;
     mesh.userData.editorType = src.type;
+    mesh.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.userData.editorId = newId;
+        child.userData.editorName = newName;
+        child.userData.editorType = src.type;
+      }
+    });
 
-    const record = { id: newId, name: newName, type: src.type, mesh, material: mat };
+    const record = { id: newId, name: newName, type: src.type, mesh, material: mesh.material || null };
 
     this.objects.set(newId, record);
     this.scene.add(mesh);
@@ -166,8 +174,7 @@ export class ObjectManager {
     const record = this.objects.get(id);
     if (!record) return;
     this.scene.remove(record.mesh);
-    record.mesh.geometry.dispose();
-    record.mesh.material.dispose();
+    this._disposeObject3D(record.mesh);
     this.objects.delete(id);
     EventBus.emit('state:changed', { type: 'scene' });
   }
@@ -218,17 +225,26 @@ export class ObjectManager {
    * @returns {THREE.Mesh[]}
    */
   getMeshes() {
-    return [...this.objects.values()].map(r => r.mesh);
+    const meshes = [];
+    for (const record of this.objects.values()) {
+      record.mesh.traverse(child => {
+        if (child.isMesh) meshes.push(child);
+      });
+    }
+    return meshes;
   }
 
   /** Total triangle count across all objects */
   getTriangleCount() {
     let tris = 0;
     for (const r of this.objects.values()) {
-      const index = r.mesh.geometry.index;
-      const pos   = r.mesh.geometry.attributes.position;
-      if (index) tris += index.count / 3;
-      else if (pos) tris += pos.count / 3;
+      r.mesh.traverse(child => {
+        if (!child.isMesh || !child.geometry) return;
+        const index = child.geometry.index;
+        const pos   = child.geometry.attributes.position;
+        if (index) tris += index.count / 3;
+        else if (pos) tris += pos.count / 3;
+      });
     }
     return Math.round(tris);
   }
@@ -239,6 +255,29 @@ export class ObjectManager {
     ids.forEach(id => this.delete(id));
     // Reset counters
     this._counter = { box: 0, sphere: 0, cylinder: 0, plane: 0 };
+  }
+
+  _cloneObject3D(object) {
+    const clone = object.clone(true);
+    clone.traverse(child => {
+      if (!child.isMesh) return;
+      if (child.geometry) child.geometry = child.geometry.clone();
+      if (Array.isArray(child.material)) {
+        child.material = child.material.map(material => material.clone());
+      } else if (child.material) {
+        child.material = child.material.clone();
+      }
+    });
+    return clone;
+  }
+
+  _disposeObject3D(object) {
+    object.traverse(child => {
+      if (!child.isMesh) return;
+      if (child.geometry) child.geometry.dispose();
+      if (Array.isArray(child.material)) child.material.forEach(material => material.dispose());
+      else if (child.material) child.material.dispose();
+    });
   }
 }
 

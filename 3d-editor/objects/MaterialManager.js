@@ -23,6 +23,31 @@ export const DEFAULT_COLOR = 0x909090;
 
 export class MaterialManager {
 
+  _forEachMesh(target, callback) {
+    if (!target) return;
+    if (target.isMesh) {
+      callback(target);
+      return;
+    }
+    if (target.traverse) {
+      target.traverse(child => {
+        if (child.isMesh) callback(child);
+      });
+    }
+  }
+
+  getPrimaryMaterial(target) {
+    if (!target) return null;
+    if (target.isMesh && target.material) return Array.isArray(target.material) ? target.material[0] : target.material;
+
+    let first = null;
+    this._forEachMesh(target, mesh => {
+      if (first || !mesh.material) return;
+      first = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    });
+    return first;
+  }
+
   /**
    * Create a new MeshStandardMaterial with preset defaults.
    * @param {number|string} color   — THREE color (0xrrggbb or '#rrggbb')
@@ -48,7 +73,10 @@ export class MaterialManager {
    */
   applyColor(mesh, hexColor) {
     const color = hexColor.startsWith('#') ? hexColor : `#${hexColor}`;
-    mesh.material.color.set(color);
+    this._forEachMesh(mesh, child => {
+      const material = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (material?.color) material.color.set(color);
+    });
   }
 
   /**
@@ -60,20 +88,33 @@ export class MaterialManager {
   applyPreset(mesh, presetName) {
     const p = MATERIAL_PRESETS[presetName];
     if (!p) return;
-    mesh.material.roughness   = p.roughness;
-    mesh.material.metalness   = p.metalness;
-    mesh.material.transparent = p.transparent;
-    mesh.material.opacity     = p.opacity;
-    mesh.material.needsUpdate = true;
+    this._forEachMesh(mesh, child => {
+      const material = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (!material) return;
+      material.roughness   = p.roughness;
+      material.metalness   = p.metalness;
+      material.transparent = p.transparent;
+      material.opacity     = p.opacity;
+      material.needsUpdate = true;
+      child.userData.presetName = presetName;
+    });
     mesh.userData.presetName  = presetName;
   }
 
   setRoughness(mesh, value) {
-    mesh.material.roughness = Math.max(0, Math.min(1, parseFloat(value)));
+    const next = Math.max(0, Math.min(1, parseFloat(value)));
+    this._forEachMesh(mesh, child => {
+      const material = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (material) material.roughness = next;
+    });
   }
 
   setMetalness(mesh, value) {
-    mesh.material.metalness = Math.max(0, Math.min(1, parseFloat(value)));
+    const next = Math.max(0, Math.min(1, parseFloat(value)));
+    this._forEachMesh(mesh, child => {
+      const material = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (material) material.metalness = next;
+    });
   }
 
   /**
@@ -83,13 +124,16 @@ export class MaterialManager {
    * @param {number|null} color
    */
   setEmissive(mesh, color) {
-    if (!mesh.material) return;
-    if (color === null) {
-      mesh.material.emissive.set(0x000000);
-      mesh.material.emissiveIntensity = 0;
-    } else {
-      mesh.material.emissive.set(color);
-      mesh.material.emissiveIntensity = 0.15;
-    }
+    this._forEachMesh(mesh, child => {
+      const material = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (!material?.emissive) return;
+      if (color === null) {
+        material.emissive.set(0x000000);
+        material.emissiveIntensity = 0;
+      } else {
+        material.emissive.set(color);
+        material.emissiveIntensity = 0.15;
+      }
+    });
   }
 }

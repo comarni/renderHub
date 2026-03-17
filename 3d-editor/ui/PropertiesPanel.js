@@ -238,15 +238,16 @@ export class PropertiesPanel {
       if (this._sclZ) this._sclZ.value = mesh.scale.z.toFixed(3);
 
       // Material
-      if (mesh.material) {
-        const hexStr = '#' + mesh.material.color.getHexString();
+      const material = this.parser.mats.getPrimaryMaterial(mesh);
+      if (material) {
+        const hexStr = '#' + material.color.getHexString();
         if (this._colorPicker) this._colorPicker.value = hexStr;
         if (this._colorHex)    this._colorHex.value    = hexStr;
 
-        if (this._roughSlider) this._roughSlider.value = mesh.material.roughness;
-        if (this._roughVal)    this._roughVal.textContent = mesh.material.roughness.toFixed(2);
-        if (this._metalSlider) this._metalSlider.value = mesh.material.metalness;
-        if (this._metalVal)    this._metalVal.textContent = mesh.material.metalness.toFixed(2);
+        if (this._roughSlider) this._roughSlider.value = material.roughness;
+        if (this._roughVal)    this._roughVal.textContent = material.roughness.toFixed(2);
+        if (this._metalSlider) this._metalSlider.value = material.metalness;
+        if (this._metalVal)    this._metalVal.textContent = material.metalness.toFixed(2);
         this._highlightMatBtn(mesh.userData.presetName || null);
       }
     } finally {
