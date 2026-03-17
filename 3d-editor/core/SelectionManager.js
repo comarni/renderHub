@@ -44,6 +44,24 @@ export class SelectionManager {
     this.transformControls.name = '__transformControls';
     scene.add(this.transformControls);
 
+    // Space (world vs local)
+    this._space = 'world';
+    this.transformControls.setSpace('world');
+
+    // Ctrl+drag snapping: 0.25u translation, 15° rotation, 0.25 scale
+    const _snapOn  = () => {
+      this.transformControls.setTranslationSnap(0.25);
+      this.transformControls.setRotationSnap(THREE.MathUtils.degToRad(15));
+      this.transformControls.setScaleSnap(0.25);
+    };
+    const _snapOff = () => {
+      this.transformControls.setTranslationSnap(null);
+      this.transformControls.setRotationSnap(null);
+      this.transformControls.setScaleSnap(null);
+    };
+    window.addEventListener('keydown', e => { if (e.key === 'Control') _snapOn(); });
+    window.addEventListener('keyup',   e => { if (e.key === 'Control') _snapOff(); });
+
     // CRITICAL: disable OrbitControls while dragging gizmo
     this.transformControls.addEventListener('dragging-changed', (e) => {
       this.cam.controls.enabled = !e.value;
@@ -71,6 +89,15 @@ export class SelectionManager {
   }
 
   get mode() { return this._transformMode; }
+
+  /** Toggle between 'world' and 'local' transform space. Returns new space. */
+  toggleSpace() {
+    this._space = this._space === 'world' ? 'local' : 'world';
+    this.transformControls.setSpace(this._space);
+    return this._space;
+  }
+
+  get space() { return this._space; }
 
   /* ── Selection ────────────────────────────────────────────── */
 

@@ -25,7 +25,7 @@ Available commands:
   rotate <x> <y> <z>    — rotate 0 45 0
   scale <x> <y> <z>     — scale 2 1 1  (or: scale 2)
   color <#hex>          — color #ff5500
-  material <preset>     — material metal | plastic | glass | matte
+  material <preset>     — plastic|metal|matte|glass|rubber|chrome|gold|wood|concrete|ceramic|carbon|velvet
   roughness <0-1>       — roughness 0.3
   metalness <0-1>       — metalness 0.8
   duplicate             — duplicate selected

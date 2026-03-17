@@ -78,6 +78,7 @@
             <button class="btn-transform active" data-mode="translate" title="Move (G)">Move</button>
             <button class="btn-transform" data-mode="rotate" title="Rotate (R)">Rotate</button>
             <button class="btn-transform" data-mode="scale" title="Scale (S)">Scale</button>
+            <button id="btn-space" class="btn-transform btn-space" title="Toggle Local/World space (W)">World</button>
           </div>
 
           <!-- Wireframe toggle -->
@@ -207,12 +208,20 @@
             </div>
             <div class="prop-row">
               <label>Preset</label>
-              <select id="prop-material-preset" class="prop-select">
-                <option value="plastic">Plastic</option>
-                <option value="metal">Metal</option>
-                <option value="matte">Matte</option>
-                <option value="glass">Glass</option>
-              </select>
+            </div>
+            <div id="material-gallery">
+              <button class="mat-btn" data-preset="plastic"  title="Plastic  ·  r0.5  m0"    style="--sw:#9090e0">Plastic</button>
+              <button class="mat-btn" data-preset="metal"    title="Metal    ·  r0.15 m1"    style="--sw:#b0b8c0">Metal</button>
+              <button class="mat-btn" data-preset="matte"    title="Matte    ·  r0.95 m0"    style="--sw:#606060">Matte</button>
+              <button class="mat-btn" data-preset="glass"    title="Glass    ·  transparent"  style="--sw:#88ccee">Glass</button>
+              <button class="mat-btn" data-preset="rubber"   title="Rubber   ·  r0.9  m0"    style="--sw:#2a2a2a">Rubber</button>
+              <button class="mat-btn" data-preset="chrome"   title="Chrome   ·  r0.05 m1"    style="--sw:#c8d0d8">Chrome</button>
+              <button class="mat-btn" data-preset="gold"     title="Gold     ·  r0.2  m1"    style="--sw:#ffc060">Gold</button>
+              <button class="mat-btn" data-preset="wood"     title="Wood     ·  r0.8  m0"    style="--sw:#8b5e3c">Wood</button>
+              <button class="mat-btn" data-preset="concrete" title="Concrete ·  r0.95 m0.05" style="--sw:#888880">Concrete</button>
+              <button class="mat-btn" data-preset="ceramic"  title="Ceramic  ·  r0.3  m0.05" style="--sw:#f0ebe0">Ceramic</button>
+              <button class="mat-btn" data-preset="carbon"   title="Carbon   ·  r0.4  m0.6"  style="--sw:#1c2028">Carbon</button>
+              <button class="mat-btn" data-preset="velvet"   title="Velvet   ·  r1.0  m0"    style="--sw:#7030a0">Velvet</button>
             </div>
             <div class="prop-row">
               <label>Roughness</label>

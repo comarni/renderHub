@@ -49,7 +49,7 @@ export class PropertiesPanel {
     // Material
     this._colorPicker  = document.getElementById('prop-color');
     this._colorHex     = document.getElementById('prop-color-hex');
-    this._matPreset    = document.getElementById('prop-material-preset');
+    this._matGallery   = document.getElementById('material-gallery');
     this._roughSlider  = document.getElementById('prop-roughness');
     this._roughVal     = document.getElementById('prop-roughness-val');
     this._metalSlider  = document.getElementById('prop-metalness');
@@ -124,11 +124,13 @@ export class PropertiesPanel {
       });
     }
 
-    // Material preset
-    if (this._matPreset) {
-      this._matPreset.addEventListener('change', () => {
-        if (this._isRefreshing) return;
-        this.parser.execute(`material ${this._matPreset.value}`);
+    // Material gallery buttons
+    if (this._matGallery) {
+      this._matGallery.addEventListener('click', (e) => {
+        const btn = e.target.closest('.mat-btn');
+        if (!btn || this._isRefreshing) return;
+        this.parser.execute(`material ${btn.dataset.preset}`);
+        this._highlightMatBtn(btn.dataset.preset);
       });
     }
 
@@ -245,6 +247,7 @@ export class PropertiesPanel {
         if (this._roughVal)    this._roughVal.textContent = mesh.material.roughness.toFixed(2);
         if (this._metalSlider) this._metalSlider.value = mesh.material.metalness;
         if (this._metalVal)    this._metalVal.textContent = mesh.material.metalness.toFixed(2);
+        this._highlightMatBtn(mesh.userData.presetName || null);
       }
     } finally {
       this._isRefreshing = false;
@@ -260,6 +263,13 @@ export class PropertiesPanel {
     if (this._camNear) this._camNear.value = this.cam.perspCamera.near;
     if (this._camFar)  this._camFar.value  = this.cam.perspCamera.far;
     this._isRefreshing = false;
+  }
+
+  _highlightMatBtn(presetName) {
+    if (!this._matGallery) return;
+    this._matGallery.querySelectorAll('.mat-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === presetName);
+    });
   }
 
   _showEmpty() {

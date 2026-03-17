@@ -23,6 +23,7 @@ export class ViewportOverlay {
     this._setupExportButton();
     this._setupStats();
     this._setupKeyboardShortcuts();
+    this._setupSpaceButton();
     this._setupMobileDock();
 
     // Update active tool label
@@ -78,6 +79,13 @@ export class ViewportOverlay {
     document.querySelectorAll('.btn-transform').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
+  }
+
+  _setActiveSpaceBtn(space) {
+    const btn = document.getElementById('btn-space');
+    if (!btn) return;
+    btn.textContent = space === 'world' ? 'World' : 'Local';
+    btn.classList.toggle('local', space === 'local');
   }
 
   /* ── Wireframe toggle ─────────────────────────────────────── */
@@ -149,9 +157,17 @@ export class ViewportOverlay {
         case 'delete':
           this.parser.execute('delete');
           break;
-        case 'z':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
+        case 'escape':
+          this.sel.deselectAll();
+          break;
+        case 'w':
+          if (e.ctrlKey || e.metaKey) break;
+          e.preventDefault();
+          this._setActiveSpaceBtn(this.sel.toggleSpace());
+          break;
+        case 'x':
+        case 'delete':
+          this.parser.execute('delete');
             e.shiftKey ? this.parser.execute('redo') : this.parser.execute('undo');
           }
           break;
@@ -175,6 +191,13 @@ export class ViewportOverlay {
           break;
       }
     });
+  }
+
+
+  // Wire btn-space (Space toggle button in viewport overlay)
+  _setupSpaceButton() {
+    const btn = document.getElementById('btn-space');
+    if (btn) btn.addEventListener('click', () => this._setActiveSpaceBtn(this.sel.toggleSpace()));
   }
 
   _setupMobileDock() {

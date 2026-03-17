@@ -574,6 +574,74 @@ html, body {
   caret-color: var(--accent);
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   Sprint 3.1 — Local/World space toggle button
+═══════════════════════════════════════════════════════════════ */
+#btn-space {
+  opacity: 0.65;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+#btn-space:hover { opacity: 0.9; }
+#btn-space.local {
+  opacity: 1;
+  color: #80c8ff;
+  border-color: rgba(80, 160, 255, 0.55);
+  background: rgba(80, 160, 255, 0.08);
+  font-style: normal;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Sprint 3.2 — Material gallery (12 PBR presets)
+═══════════════════════════════════════════════════════════════ */
+#material-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin: 0 0 10px;
+  padding: 0 12px;
+}
+
+.mat-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 4px 5px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  transition: background .15s, border-color .15s, color .15s;
+  user-select: none;
+}
+.mat-btn::before {
+  content: '';
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--sw, #888);
+  border: 1.5px solid rgba(255,255,255,.18);
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  flex-shrink: 0;
+}
+.mat-btn:hover {
+  background: rgba(255,255,255,.09);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.mat-btn.active {
+  border-color: var(--accent);
+  background: rgba(224,60,122,.12);
+  color: var(--text);
+}
+.mat-btn.active::before {
+  box-shadow: 0 0 0 2px var(--accent), 0 1px 4px rgba(0,0,0,.4);
+}
 #terminal-input::placeholder {
   color: var(--text-muted);
   font-style: italic;
