@@ -117,6 +117,29 @@ export class MaterialManager {
     });
   }
 
+  setShading(target, mode) {
+    const flat = mode === 'flat';
+    this._forEachMesh(target, child => {
+      const material = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (material) {
+        material.flatShading = flat;
+        material.needsUpdate = true;
+      }
+      if (child.geometry) {
+        if (flat) child.geometry.computeVertexNormals();
+        else child.geometry.computeVertexNormals();
+      }
+    });
+  }
+
+  recalculateNormals(target) {
+    this._forEachMesh(target, child => {
+      if (!child.geometry) return;
+      child.geometry.computeVertexNormals();
+      child.geometry.attributes.normal.needsUpdate = true;
+    });
+  }
+
   /**
    * Set the emissive color for selection highlighting.
    * Pass null to clear.

@@ -20,12 +20,19 @@ Available commands:
   import                — import GLTF / GLB / OBJ / STL model (opens file picker)
   add <type> [name]     — add cube | sphere | cylinder | plane
   select <name|all>     — select Cube.001
+  select object <id>    — select object obj_xxx
   deselect              — clear selection
   move <x> <y> <z>      — move 0 1.5 0
+  translate <id> <x> <y> <z> — translate obj_xxx 0 1 0
+  rotate <id> <x> <y> <z>    — rotate obj_xxx 0 45 0
+  scale <id> <x> <y> <z>     — scale obj_xxx 1.2 1 1
   rotate <axis> <deg>   — rotate y 45
   rotate <x> <y> <z>    — rotate 0 45 0
   scale <x> <y> <z>     — scale 2 1 1  (or: scale 2)
   color <#hex>          — color #ff5500
+  set color <id> <r> <g> <b> — set color obj_xxx 255 120 30
+  shading <id> flat|smooth   — shading obj_xxx smooth
+  recalc normals <id>        — recalc normals obj_xxx
   material <preset>     — plastic|metal|matte|glass|rubber|chrome|gold|wood|concrete|ceramic|carbon|velvet
   roughness <0-1>       — roughness 0.3
   metalness <0-1>       — metalness 0.8
@@ -113,11 +120,15 @@ export class CommandParser {
       switch (cmd) {
         case 'add':        return this._add(args);
         case 'select':     return this._select(args);
+        case 'translate':  return this._translate(args);
         case 'deselect':   return this._deselect();
         case 'move':       return this._move(args);
         case 'rotate':     return this._rotate(args);
         case 'scale':      return this._scale(args);
         case 'color':      return this._color(args);
+        case 'set':        return this._set(args);
+        case 'shading':    return this._shading(args);
+        case 'recalc':     return this._recalc(args);
         case 'material':   return this._material(args);
         case 'roughness':  return this._roughness(args);
         case 'metalness':  return this._metalness(args);
@@ -251,6 +262,14 @@ export class CommandParser {
 
   _select(args) {
     if (!args.length) return { success: false, message: 'Usage: select <name|all>' };
+    if (args[0].toLowerCase() === 'object') {
+      const token = args.slice(1).join(' ');
+      if (!token) return { success: false, message: 'Usage: select object <id|name>' };
+      const rec = this._findRecord(token);
+      if (!rec) return { success: false, message: `Object not found: "${token}"` };
+      this.sel.selectByIds([rec.id], false);
+      return { success: true, message: `Selected "${rec.name}" (${rec.id})` };
+    }
     const name = args.join(' ');
     if (name.toLowerCase() === 'all') {
       const ids = this.objs.list().map(r => r.id);
@@ -268,9 +287,9 @@ export class CommandParser {
   }
 
   _move(args) {
-    const rec = this._requireSelection();
-    if (rec._error) return rec;
-    const [x, y, z] = this._parseXYZ(args);
+    const { rec, xyz, error } = this._resolveTransformTarget(args, 'move');
+    if (error) return error;
+    const [x, y, z] = xyz;
     const mesh = rec.mesh;
     const prev = mesh.position.clone();
     mesh.position.set(x, y, z);
@@ -284,17 +303,19 @@ export class CommandParser {
   }
 
   _rotate(args) {
-    const rec = this._requireSelection();
+    const rec = this._resolveRotationTarget(args);
     if (rec._error) return rec;
     const mesh = rec.mesh;
     const prev = mesh.rotation.clone();
 
     let rx, ry, rz;
 
-    if (args.length === 2 && ['x', 'y', 'z'].includes(args[0].toLowerCase())) {
+    const rotArgs = rec._args;
+
+    if (rotArgs.length === 2 && ['x', 'y', 'z'].includes(rotArgs[0].toLowerCase())) {
       // rotate y 45  (incremental on one axis)
-      const axis = args[0].toLowerCase();
-      const deg  = parseFloat(args[1]) || 0;
+      const axis = rotArgs[0].toLowerCase();
+      const deg  = parseFloat(rotArgs[1]) || 0;
       rx = mesh.rotation.x * RAD2DEG;
       ry = mesh.rotation.y * RAD2DEG;
       rz = mesh.rotation.z * RAD2DEG;
@@ -303,7 +324,7 @@ export class CommandParser {
       if (axis === 'z') rz += deg;
     } else {
       // rotate 0 45 0  (absolute all axes)
-      [rx, ry, rz] = this._parseXYZ(args);
+      [rx, ry, rz] = this._parseXYZ(rotArgs);
     }
 
     mesh.rotation.set(rx * DEG2RAD, ry * DEG2RAD, rz * DEG2RAD);
@@ -318,17 +339,18 @@ export class CommandParser {
   }
 
   _scale(args) {
-    const rec = this._requireSelection();
+    const rec = this._resolveScaleTarget(args);
     if (rec._error) return rec;
     const mesh = rec.mesh;
     const prev = mesh.scale.clone();
+    const scaleArgs = rec._args;
 
     let sx, sy, sz;
-    if (args.length === 1) {
+    if (scaleArgs.length === 1) {
       // Uniform scale
-      sx = sy = sz = parseFloat(args[0]) || 1;
+      sx = sy = sz = parseFloat(scaleArgs[0]) || 1;
     } else {
-      [sx, sy, sz] = this._parseXYZ(args);
+      [sx, sy, sz] = this._parseXYZ(scaleArgs);
     }
 
     if (sx <= 0 || sy <= 0 || sz <= 0) {
@@ -371,9 +393,9 @@ export class CommandParser {
   }
 
   _material(args) {
-    const rec = this._requireSelection();
+    const rec = this._resolveTargetOrSelection(args, 'material');
     if (rec._error) return rec;
-    const preset = (args[0] || '').toLowerCase();
+    const preset = (rec._args[0] || '').toLowerCase();
     const valid = Object.keys(MATERIAL_PRESETS);
     if (!valid.includes(preset)) {
       return { success: false, message: `Unknown preset "${preset}". Use: ${valid.join(', ')}` };
@@ -384,9 +406,9 @@ export class CommandParser {
   }
 
   _roughness(args) {
-    const rec = this._requireSelection();
+    const rec = this._resolveTargetOrSelection(args, 'roughness');
     if (rec._error) return rec;
-    const val = parseFloat(args[0]);
+    const val = parseFloat(rec._args[0]);
     if (isNaN(val)) return { success: false, message: 'Usage: roughness <0-1>' };
     this.mats.setRoughness(rec.mesh, val);
     EventBus.emit('state:changed', { type: 'material' });
@@ -394,9 +416,9 @@ export class CommandParser {
   }
 
   _metalness(args) {
-    const rec = this._requireSelection();
+    const rec = this._resolveTargetOrSelection(args, 'metalness');
     if (rec._error) return rec;
-    const val = parseFloat(args[0]);
+    const val = parseFloat(rec._args[0]);
     if (isNaN(val)) return { success: false, message: 'Usage: metalness <0-1>' };
     this.mats.setMetalness(rec.mesh, val);
     EventBus.emit('state:changed', { type: 'material' });
@@ -489,7 +511,136 @@ export class CommandParser {
     return { success: true, message: 'Wireframe toggled' };
   }
 
+  _translate(args) {
+    return this._move(args);
+  }
+
+  _set(args) {
+    if (!args.length) return { success: false, message: 'Usage: set color <id> <r> <g> <b>' };
+    const sub = args[0].toLowerCase();
+    if (sub === 'color') return this._setColor(args.slice(1));
+    return { success: false, message: `Unknown set command: "${sub}"` };
+  }
+
+  _setColor(args) {
+    if (args.length < 4) return { success: false, message: 'Usage: set color <id> <r> <g> <b>' };
+    const rec = this._findRecord(args[0]);
+    if (!rec) return { success: false, message: `Object not found: "${args[0]}"` };
+
+    const [r, g, b] = args.slice(1, 4).map(v => Math.max(0, Math.min(255, parseInt(v, 10) || 0)));
+    const hex = `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+
+    const prevMat = this.mats.getPrimaryMaterial(rec.mesh);
+    if (!prevMat?.color) return { success: false, message: `No editable material on "${rec.name}"` };
+    const prevColor = '#' + prevMat.color.getHexString();
+    this.mats.applyColor(rec.mesh, hex);
+
+    this._pushHistory(
+      `set color ${rec.name}`,
+      () => { this.mats.applyColor(rec.mesh, prevColor); EventBus.emit('state:changed', { type: 'material' }); },
+      () => { this.mats.applyColor(rec.mesh, hex); EventBus.emit('state:changed', { type: 'material' }); }
+    );
+
+    EventBus.emit('state:changed', { type: 'material' });
+    return { success: true, message: `Color set to rgb(${r}, ${g}, ${b}) on "${rec.name}"` };
+  }
+
+  _shading(args) {
+    if (args.length < 2) return { success: false, message: 'Usage: shading <id> flat|smooth' };
+    const rec = this._findRecord(args[0]);
+    if (!rec) return { success: false, message: `Object not found: "${args[0]}"` };
+    const mode = (args[1] || '').toLowerCase();
+    if (!['flat', 'smooth'].includes(mode)) return { success: false, message: 'Usage: shading <id> flat|smooth' };
+
+    this.mats.setShading(rec.mesh, mode);
+    EventBus.emit('state:changed', { type: 'material' });
+    return { success: true, message: `Shading ${mode} on "${rec.name}"` };
+  }
+
+  _recalc(args) {
+    if ((args[0] || '').toLowerCase() !== 'normals' || !args[1]) {
+      return { success: false, message: 'Usage: recalc normals <id>' };
+    }
+    const rec = this._findRecord(args[1]);
+    if (!rec) return { success: false, message: `Object not found: "${args[1]}"` };
+
+    this.mats.recalculateNormals(rec.mesh);
+    EventBus.emit('state:changed', { type: 'geometry' });
+    return { success: true, message: `Normals recalculated on "${rec.name}"` };
+  }
+
   /* ══ Helpers ══════════════════════════════════════════════════ */
+
+  _findRecord(token) {
+    if (!token) return null;
+    return this.objs.getById(token) || this.objs.getByName(token) || null;
+  }
+
+  _resolveTargetOrSelection(args, command) {
+    if (!args.length) return this._requireSelection();
+
+    // command <value> against selection (legacy) should still work
+    if (args.length === 1 && ['material', 'roughness', 'metalness'].includes(command)) {
+      const selected = this._requireSelection();
+      if (selected._error) return selected;
+      selected._args = args;
+      return selected;
+    }
+
+    // command <id> <value>
+    const rec = this._findRecord(args[0]);
+    if (!rec) {
+      // fallback to selection if first token is not an id/name
+      const selected = this._requireSelection();
+      if (selected._error) return selected;
+      selected._args = args;
+      return selected;
+    }
+    rec._args = args.slice(1);
+    return rec;
+  }
+
+  _resolveTransformTarget(args, command) {
+    if (args.length >= 4) {
+      const rec = this._findRecord(args[0]);
+      if (rec) return { rec, xyz: this._parseXYZ(args.slice(1)) };
+    }
+
+    const rec = this._requireSelection();
+    if (rec._error) return { error: rec };
+    if (args.length < 3) {
+      return { error: { success: false, message: `Usage: ${command} <x> <y> <z> OR ${command} <id> <x> <y> <z>` } };
+    }
+    return { rec, xyz: this._parseXYZ(args) };
+  }
+
+  _resolveRotationTarget(args) {
+    if (args.length >= 4) {
+      const rec = this._findRecord(args[0]);
+      if (rec) {
+        rec._args = args.slice(1);
+        return rec;
+      }
+    }
+    const rec = this._requireSelection();
+    if (rec._error) return rec;
+    rec._args = args;
+    return rec;
+  }
+
+  _resolveScaleTarget(args) {
+    if (args.length >= 2) {
+      const rec = this._findRecord(args[0]);
+      if (rec) {
+        rec._args = args.slice(1);
+        return rec;
+      }
+    }
+    const rec = this._requireSelection();
+    if (rec._error) return rec;
+    rec._args = args;
+    return rec;
+  }
 
   _requireSelection() {
     const rec = this.sel.getPrimary();

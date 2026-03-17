@@ -156,11 +156,11 @@
         <div class="panel-section" id="section-object">
           <div class="panel-header">Object</div>
           <div class="prop-row">
-            <label>Name</label>
+            <label for="prop-name">Name</label>
             <input type="text" id="prop-name" class="prop-input-full" />
           </div>
           <div class="prop-row">
-            <label>Type</label>
+            <span class="prop-label">Type</span>
             <span id="prop-type" class="prop-value-text">—</span>
           </div>
         </div>
@@ -172,31 +172,31 @@
             <!-- Position -->
             <div class="prop-group-label">Position</div>
             <div class="prop-row prop-xyz">
-              <label class="axis-label x">X</label>
+              <label class="axis-label x" for="pos-x">X</label>
               <input type="number" id="pos-x" class="prop-input" step="0.1" />
-              <label class="axis-label y">Y</label>
+              <label class="axis-label y" for="pos-y">Y</label>
               <input type="number" id="pos-y" class="prop-input" step="0.1" />
-              <label class="axis-label z">Z</label>
+              <label class="axis-label z" for="pos-z">Z</label>
               <input type="number" id="pos-z" class="prop-input" step="0.1" />
             </div>
             <!-- Rotation -->
             <div class="prop-group-label">Rotation (deg)</div>
             <div class="prop-row prop-xyz">
-              <label class="axis-label x">X</label>
+              <label class="axis-label x" for="rot-x">X</label>
               <input type="number" id="rot-x" class="prop-input" step="1" />
-              <label class="axis-label y">Y</label>
+              <label class="axis-label y" for="rot-y">Y</label>
               <input type="number" id="rot-y" class="prop-input" step="1" />
-              <label class="axis-label z">Z</label>
+              <label class="axis-label z" for="rot-z">Z</label>
               <input type="number" id="rot-z" class="prop-input" step="1" />
             </div>
             <!-- Scale -->
             <div class="prop-group-label">Scale</div>
             <div class="prop-row prop-xyz">
-              <label class="axis-label x">X</label>
+              <label class="axis-label x" for="scl-x">X</label>
               <input type="number" id="scl-x" class="prop-input" step="0.1" min="0.01" />
-              <label class="axis-label y">Y</label>
+              <label class="axis-label y" for="scl-y">Y</label>
               <input type="number" id="scl-y" class="prop-input" step="0.1" min="0.01" />
-              <label class="axis-label z">Z</label>
+              <label class="axis-label z" for="scl-z">Z</label>
               <input type="number" id="scl-z" class="prop-input" step="0.1" min="0.01" />
             </div>
           </div>
@@ -207,14 +207,14 @@
           <div class="panel-header collapsible" data-target="material-body">Material</div>
           <div id="material-body">
             <div class="prop-row">
-              <label>Color</label>
+              <label for="prop-color">Color</label>
               <div class="color-row">
                 <input type="color" id="prop-color" class="prop-color-picker" />
-                <input type="text" id="prop-color-hex" class="prop-input prop-color-hex" maxlength="7" placeholder="#888888" />
+                <input type="text" id="prop-color-hex" class="prop-input prop-color-hex" maxlength="7" placeholder="#888888" aria-label="Color hex" />
               </div>
             </div>
             <div class="prop-row">
-              <label>Preset</label>
+              <span class="prop-label">Preset</span>
             </div>
             <div id="material-gallery">
               <button class="mat-btn" data-preset="plastic"  title="Plastic  ·  r0.5  m0"    style="--sw:#9090e0">Plastic</button>
@@ -231,12 +231,12 @@
               <button class="mat-btn" data-preset="velvet"   title="Velvet   ·  r1.0  m0"    style="--sw:#7030a0">Velvet</button>
             </div>
             <div class="prop-row">
-              <label>Roughness</label>
+              <label for="prop-roughness">Roughness</label>
               <input type="range" id="prop-roughness" min="0" max="1" step="0.01" class="prop-slider" />
               <span id="prop-roughness-val" class="prop-val">0.50</span>
             </div>
             <div class="prop-row">
-              <label>Metalness</label>
+              <label for="prop-metalness">Metalness</label>
               <input type="range" id="prop-metalness" min="0" max="1" step="0.01" class="prop-slider" />
               <span id="prop-metalness-val" class="prop-val">0.00</span>
             </div>
@@ -260,16 +260,16 @@
         <div class="panel-header collapsible" data-target="camera-body">Camera</div>
         <div id="camera-body">
           <div class="prop-row">
-            <label>FOV</label>
+            <label for="cam-fov">FOV</label>
             <input type="range" id="cam-fov" min="20" max="120" step="1" class="prop-slider" value="75" />
             <span id="cam-fov-val" class="prop-val">75</span>
           </div>
           <div class="prop-row">
-            <label>Near</label>
+            <label for="cam-near">Near</label>
             <input type="number" id="cam-near" class="prop-input" value="0.1" step="0.1" min="0.01" />
           </div>
           <div class="prop-row">
-            <label>Far</label>
+            <label for="cam-far">Far</label>
             <input type="number" id="cam-far" class="prop-input" value="1000" step="10" />
           </div>
           <div class="prop-row">
