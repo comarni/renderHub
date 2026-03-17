@@ -21,6 +21,7 @@ Available commands:
   add <type> [name]     — add cube | sphere | cylinder | plane
   select <name|all>     — select Cube.001
   select object <id>    — select object obj_xxx
+  select face <id> <faceIndex> — select face obj_xxx 0
   deselect              — clear selection
   move <x> <y> <z>      — move 0 1.5 0
   translate <id> <x> <y> <z> — translate obj_xxx 0 1 0
@@ -33,6 +34,7 @@ Available commands:
   set color <id> <r> <g> <b> — set color obj_xxx 255 120 30
   shading <id> flat|smooth   — shading obj_xxx smooth
   recalc normals <id>        — recalc normals obj_xxx
+  extrude selection <distance> — extrude selection 0.2
   material <preset>     — plastic|metal|matte|glass|rubber|chrome|gold|wood|concrete|ceramic|carbon|velvet
   roughness <0-1>       — roughness 0.3
   metalness <0-1>       — metalness 0.8
@@ -121,6 +123,7 @@ export class CommandParser {
         case 'add':        return this._add(args);
         case 'select':     return this._select(args);
         case 'translate':  return this._translate(args);
+        case 'extrude':    return this._extrude(args);
         case 'deselect':   return this._deselect();
         case 'move':       return this._move(args);
         case 'rotate':     return this._rotate(args);
@@ -262,6 +265,14 @@ export class CommandParser {
 
   _select(args) {
     if (!args.length) return { success: false, message: 'Usage: select <name|all>' };
+    if (args[0].toLowerCase() === 'face') {
+      const token = args[1];
+      const faceIndex = parseInt(args[2], 10);
+      if (!token || !Number.isInteger(faceIndex)) {
+        return { success: false, message: 'Usage: select face <id|name> <faceIndex>' };
+      }
+      return this.sel.selectFaceByObjectToken(token, faceIndex);
+    }
     if (args[0].toLowerCase() === 'object') {
       const token = args.slice(1).join(' ');
       if (!token) return { success: false, message: 'Usage: select object <id|name>' };
@@ -513,6 +524,17 @@ export class CommandParser {
 
   _translate(args) {
     return this._move(args);
+  }
+
+  _extrude(args) {
+    if ((args[0] || '').toLowerCase() !== 'selection') {
+      return { success: false, message: 'Usage: extrude selection <distance>' };
+    }
+    const dist = parseFloat(args[1]);
+    if (!Number.isFinite(dist)) {
+      return { success: false, message: 'Usage: extrude selection <distance>' };
+    }
+    return this.sel.extrudeSelectedFace(dist);
   }
 
   _set(args) {

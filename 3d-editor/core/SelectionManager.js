@@ -31,6 +31,10 @@ export class SelectionManager {
     this.raycaster = new THREE.Raycaster();
     this._pointer  = new THREE.Vector2();
 
+    // Face-selection state (editor mode)
+    this._faceSelection = null;
+    this._faceOutline = null;
+
     // Pivot group used for multi-object transform
     this._pivotGroup = null;
 
@@ -144,6 +148,7 @@ export class SelectionManager {
   deselectAll() {
     this._clearEmissive();
     this.selected.clear();
+    this.clearFaceSelection();
     this._detachGizmo();
     EventBus.emit('state:changed', { type: 'selection' });
     EventBus.emit('selection:changed', { ids: new Set() });
@@ -161,6 +166,125 @@ export class SelectionManager {
   /** All selected records */
   getAll() {
     return [...this.selected].map(id => this.objs.getById(id)).filter(Boolean);
+  }
+
+  /**
+   * Select a face on the object's primary editable mesh.
+   * @param {string} objectToken id or name
+   * @param {number} faceIndex triangle index
+   */
+  selectFaceByObjectToken(objectToken, faceIndex) {
+    const rec = this.objs.getById(objectToken) || this.objs.getByName(objectToken);
+    if (!rec) return { success: false, message: `Object not found: "${objectToken}"` };
+
+    const mesh = this._findEditableMesh(rec.mesh);
+    if (!mesh || !mesh.geometry || !mesh.geometry.attributes?.position) {
+      return { success: false, message: `Object "${rec.name}" has no editable mesh geometry.` };
+    }
+
+    const triCount = this._getTriangleCount(mesh.geometry);
+    if (faceIndex < 0 || faceIndex >= triCount) {
+      return { success: false, message: `Face index out of range: ${faceIndex} (0..${triCount - 1})` };
+    }
+
+    this.selectByIds([rec.id], false);
+    this._faceSelection = { objectId: rec.id, mesh, faceIndex };
+    this._updateFaceOutline();
+    EventBus.emit('state:changed', { type: 'selection' });
+    return { success: true, message: `Selected face ${faceIndex} on "${rec.name}"` };
+  }
+
+  clearFaceSelection() {
+    this._faceSelection = null;
+    if (this._faceOutline) {
+      this.scene.remove(this._faceOutline);
+      this._faceOutline.geometry.dispose();
+      this._faceOutline.material.dispose();
+      this._faceOutline = null;
+    }
+  }
+
+  getFaceSelection() {
+    return this._faceSelection;
+  }
+
+  /**
+   * Extrude current selected face by offsetting coplanar vertices.
+   * Note: this is a lightweight geometric operation for browser editing.
+   */
+  extrudeSelectedFace(distance) {
+    if (!this._faceSelection) {
+      return { success: false, message: 'No face selected. Use: select face <id> <faceIndex>' };
+    }
+
+    const { mesh, faceIndex } = this._faceSelection;
+    const geo = mesh.geometry;
+    if (!geo?.attributes?.position) {
+      return { success: false, message: 'Selected face has no editable geometry.' };
+    }
+
+    const amount = parseFloat(distance);
+    if (!Number.isFinite(amount) || Math.abs(amount) < 1e-6) {
+      return { success: false, message: 'Usage: extrude selection <distance>' };
+    }
+
+    const pos = geo.attributes.position;
+    const triangle = this._getFaceTriangle(geo, faceIndex);
+    if (!triangle) return { success: false, message: 'Invalid face selection.' };
+
+    const [ia, ib, ic] = triangle;
+    const a = new THREE.Vector3().fromBufferAttribute(pos, ia);
+    const b = new THREE.Vector3().fromBufferAttribute(pos, ib);
+    const c = new THREE.Vector3().fromBufferAttribute(pos, ic);
+
+    const normal = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize();
+    const planeD = normal.dot(a);
+
+    const selectedCoords = [];
+    const movable = new Set();
+    const triCount = this._getTriangleCount(geo);
+
+    for (let f = 0; f < triCount; f++) {
+      const tri = this._getFaceTriangle(geo, f);
+      if (!tri) continue;
+      const v0 = new THREE.Vector3().fromBufferAttribute(pos, tri[0]);
+      const v1 = new THREE.Vector3().fromBufferAttribute(pos, tri[1]);
+      const v2 = new THREE.Vector3().fromBufferAttribute(pos, tri[2]);
+
+      const n = new THREE.Vector3().subVectors(v1, v0).cross(new THREE.Vector3().subVectors(v2, v0)).normalize();
+      const d = n.dot(v0);
+
+      const aligned = Math.abs(n.dot(normal)) > 0.999;
+      const coplanar = Math.abs(d - planeD) < 1e-5;
+      if (!aligned || !coplanar) continue;
+
+      tri.forEach(idx => movable.add(idx));
+    }
+
+    movable.forEach(idx => {
+      selectedCoords.push(new THREE.Vector3().fromBufferAttribute(pos, idx));
+    });
+
+    // Also move duplicated seam vertices with identical coordinates.
+    for (let i = 0; i < pos.count; i++) {
+      const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+      const sameAsSelected = selectedCoords.some(s => s.distanceToSquared(v) < 1e-10);
+      if (sameAsSelected) movable.add(i);
+    }
+
+    movable.forEach(idx => {
+      const v = new THREE.Vector3().fromBufferAttribute(pos, idx).addScaledVector(normal, amount);
+      pos.setXYZ(idx, v.x, v.y, v.z);
+    });
+
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    geo.computeBoundingBox();
+    geo.computeBoundingSphere();
+
+    this._updateFaceOutline();
+    EventBus.emit('state:changed', { type: 'geometry' });
+    return { success: true, message: `Extruded face ${faceIndex} by ${amount.toFixed(3)}` };
   }
 
   /* ── Gizmo attachment ─────────────────────────────────────── */
@@ -238,6 +362,8 @@ export class SelectionManager {
     const id = hitMesh.userData.editorId;
     if (!id) return;
 
+    this.clearFaceSelection();
+
     if (event.shiftKey) {
       // Shift-click: toggle in selection
       if (this.selected.has(id)) {
@@ -259,7 +385,64 @@ export class SelectionManager {
     this.transformControls.camera = this.cam.activeCamera;
   }
 
+  _findEditableMesh(root) {
+    if (root?.isMesh && root.geometry?.attributes?.position) return root;
+    let found = null;
+    root?.traverse(child => {
+      if (!found && child.isMesh && child.geometry?.attributes?.position) found = child;
+    });
+    return found;
+  }
+
+  _getTriangleCount(geo) {
+    if (geo.index) return Math.floor(geo.index.count / 3);
+    const pos = geo.attributes?.position;
+    return pos ? Math.floor(pos.count / 3) : 0;
+  }
+
+  _getFaceTriangle(geo, faceIndex) {
+    if (faceIndex < 0) return null;
+    if (geo.index) {
+      const arr = geo.index.array;
+      const base = faceIndex * 3;
+      if (base + 2 >= arr.length) return null;
+      return [arr[base], arr[base + 1], arr[base + 2]];
+    }
+    const pos = geo.attributes?.position;
+    if (!pos) return null;
+    const base = faceIndex * 3;
+    if (base + 2 >= pos.count) return null;
+    return [base, base + 1, base + 2];
+  }
+
+  _updateFaceOutline() {
+    if (!this._faceSelection) return;
+    const { mesh, faceIndex } = this._faceSelection;
+    const geo = mesh.geometry;
+    const pos = geo?.attributes?.position;
+    if (!pos) return;
+
+    const tri = this._getFaceTriangle(geo, faceIndex);
+    if (!tri) return;
+
+    const p0 = new THREE.Vector3().fromBufferAttribute(pos, tri[0]).applyMatrix4(mesh.matrixWorld);
+    const p1 = new THREE.Vector3().fromBufferAttribute(pos, tri[1]).applyMatrix4(mesh.matrixWorld);
+    const p2 = new THREE.Vector3().fromBufferAttribute(pos, tri[2]).applyMatrix4(mesh.matrixWorld);
+
+    const outlineGeo = new THREE.BufferGeometry().setFromPoints([p0, p1, p2, p0]);
+    if (!this._faceOutline) {
+      const mat = new THREE.LineBasicMaterial({ color: 0x4fd4ff, depthTest: false, transparent: true, opacity: 0.95 });
+      this._faceOutline = new THREE.Line(outlineGeo, mat);
+      this._faceOutline.renderOrder = 999;
+      this.scene.add(this._faceOutline);
+    } else {
+      this._faceOutline.geometry.dispose();
+      this._faceOutline.geometry = outlineGeo;
+    }
+  }
+
   dispose() {
+    this.clearFaceSelection();
     this._detachGizmo();
     this.scene.remove(this.transformControls);
     this.transformControls.dispose();
