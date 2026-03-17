@@ -23,13 +23,28 @@
       <button id="btn-mobile-scene" class="btn-header mobile-only" aria-label="Open scene panel">Scene</button>
       <button id="btn-mobile-props" class="btn-header mobile-only" aria-label="Open properties panel">Props</button>
       <button id="btn-mobile-terminal" class="btn-header mobile-only" aria-label="Toggle terminal">Term</button>
-      <button id="btn-undo" class="btn-header btn-undo" title="Undo (Ctrl+Z)">&#8592; Undo</button>
-      <button id="btn-redo" class="btn-header btn-redo" title="Redo (Ctrl+Y)">&#8594; Redo</button>
-      <button id="btn-import" class="btn-header btn-import" title="Import GLTF / GLB / OBJ / STL model">&#8679; Import</button>
-      <button id="btn-save" class="btn-header btn-save" title="Save scene as .hub file">&#128190; Save</button>
-      <button id="btn-load" class="btn-header btn-load" title="Load .hub scene file">&#128194; Load</button>
-      <button id="btn-export-stl" class="btn-header btn-accent">Export STL</button>
-      <button id="btn-export-html" class="btn-header btn-accent" title="Export as interactive HTML">🌐 Export HTML</button>
+      <button id="btn-undo" class="btn-header btn-undo desktop-only" title="Undo (Ctrl+Z)">&#8592; Undo</button>
+      <button id="btn-redo" class="btn-header btn-redo desktop-only" title="Redo (Ctrl+Y)">&#8594; Redo</button>
+      <button id="btn-import" class="btn-header btn-import desktop-only" title="Import GLTF / GLB / OBJ / STL model">&#8679; Import</button>
+      <button id="btn-save" class="btn-header btn-save desktop-only" title="Save scene as .hub file">&#128190; Save</button>
+      <button id="btn-load" class="btn-header btn-load desktop-only" title="Load .hub scene file">&#128194; Load</button>
+      <button id="btn-export-stl" class="btn-header btn-accent desktop-only">Export STL</button>
+      <button id="btn-export-html" class="btn-header btn-accent desktop-only" title="Export as interactive HTML">🌐 Export HTML</button>
+      <!-- Mobile more-actions menu -->
+      <div id="mobile-more-wrapper" class="mobile-only" style="position:relative">
+        <button id="btn-mobile-more" class="btn-header" aria-label="More actions" aria-expanded="false" aria-haspopup="true">&#8942;</button>
+        <div id="mobile-more-menu" class="mobile-more-menu" role="menu" aria-hidden="true">
+          <button id="btn-undo-m"  class="mobile-menu-item btn-undo"   role="menuitem">&#8592; Undo</button>
+          <button id="btn-redo-m"  class="mobile-menu-item btn-redo"   role="menuitem">&#8594; Redo</button>
+          <hr class="mobile-menu-sep"/>
+          <button id="btn-import-m"      class="mobile-menu-item" role="menuitem">&#8679; Import</button>
+          <button id="btn-save-m"        class="mobile-menu-item" role="menuitem">&#128190; Save</button>
+          <button id="btn-load-m"        class="mobile-menu-item" role="menuitem">&#128194; Load</button>
+          <hr class="mobile-menu-sep"/>
+          <button id="btn-export-stl-m"  class="mobile-menu-item" role="menuitem">Export STL</button>
+          <button id="btn-export-html-m" class="mobile-menu-item" role="menuitem">🌐 Export HTML</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -185,9 +200,14 @@
             id="terminal-input"
             type="text"
             autocomplete="off"
+            autocorrect="off"
+            autocapitalize="none"
             spellcheck="false"
+            inputmode="text"
+            enterkeyhint="send"
             placeholder="Type a command... (help)"
           />
+          <button id="btn-terminal-send" class="btn-terminal-send mobile-only" aria-label="Send command">&#9654;</button>
         </div>
       </div>
 

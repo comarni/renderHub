@@ -104,7 +104,7 @@ function init() {
 
   let projectLibrary = null;
 
-  if (btnSave) btnSave.addEventListener('click', () => {
+  const _doSave = () => {
     const name = prompt('Scene name:', 'my-scene') ?? 'my-scene';
     if (name !== null) {
       const result = commandParser.execute(`save ${name}`);
@@ -114,10 +114,11 @@ function init() {
       }
       if (result?.message) showToast(result.message, result.success ? 'info' : 'warn');
     }
-  });
-  if (btnLoad) btnLoad.addEventListener('click', () => {
-    commandParser.execute('load');
-  });
+  };
+
+  if (btnSave) btnSave.addEventListener('click', _doSave);
+  if (btnLoad) btnLoad.addEventListener('click', () => commandParser.execute('load'));
+
   /* ══ 6c. Import button + drag & drop (Sprint 1.2) ══════════ */
 
   const modelImporter = new ModelImporter(objectManager);
@@ -132,25 +133,24 @@ function init() {
   const btnExportSTL = document.getElementById('btn-export-stl');
   const btnExportHTML = document.getElementById('btn-export-html');
 
-  if (btnExportSTL) {
-    btnExportSTL.addEventListener('click', () => {
-      const filename = prompt('Export STL as:', 'scene') ?? 'scene';
-      if (filename) {
-        const result = stlExporter.export(filename);
-        showToast(result.message, result.success ? 'info' : 'warn');
-      }
-    });
-  }
+  const _doExportSTL = () => {
+    const filename = prompt('Export STL as:', 'scene') ?? 'scene';
+    if (filename) {
+      const result = stlExporter.export(filename);
+      showToast(result.message, result.success ? 'info' : 'warn');
+    }
+  };
 
-  if (btnExportHTML) {
-    btnExportHTML.addEventListener('click', () => {
-      const filename = prompt('Export HTML as:', 'scene-export') ?? 'scene-export';
-      if (filename) {
-        const result = htmlExporter.export(filename);
-        showToast(result.message, result.success ? 'info' : 'warn');
-      }
-    });
-  }
+  const _doExportHTML = () => {
+    const filename = prompt('Export HTML as:', 'scene-export') ?? 'scene-export';
+    if (filename) {
+      const result = htmlExporter.export(filename);
+      showToast(result.message, result.success ? 'info' : 'warn');
+    }
+  };
+
+  if (btnExportSTL)  btnExportSTL.addEventListener('click',  _doExportSTL);
+  if (btnExportHTML) btnExportHTML.addEventListener('click', _doExportHTML);
 
   /* ══ 6d. Undo / Redo buttons + Ctrl+Z/Y (Sprint 1.3) ══════ */
 
@@ -158,22 +158,32 @@ function init() {
   const btnRedo = document.getElementById('btn-redo');
 
   function _updateUndoRedoBtns() {
-    if (btnUndo) btnUndo.disabled = !commandParser.canUndo();
-    if (btnRedo) btnRedo.disabled = !commandParser.canRedo();
+    const canUndo = commandParser.canUndo();
+    const canRedo = commandParser.canRedo();
+    if (btnUndo) btnUndo.disabled = !canUndo;
+    if (btnRedo) btnRedo.disabled = !canRedo;
+    // Also update mobile mirror buttons
+    const btnUndoM = document.getElementById('btn-undo-m');
+    const btnRedoM = document.getElementById('btn-redo-m');
+    if (btnUndoM) btnUndoM.disabled = !canUndo;
+    if (btnRedoM) btnRedoM.disabled = !canRedo;
   }
   _updateUndoRedoBtns();
   EventBus.on('state:changed', _updateUndoRedoBtns);
 
-  if (btnUndo) btnUndo.addEventListener('click', () => {
+  const _doUndo = () => {
     const r = commandParser.undo();
     showToast(r.message, r.success ? 'info' : 'warn');
     _updateUndoRedoBtns();
-  });
-  if (btnRedo) btnRedo.addEventListener('click', () => {
+  };
+  const _doRedo = () => {
     const r = commandParser.redo();
     showToast(r.message, r.success ? 'info' : 'warn');
     _updateUndoRedoBtns();
-  });
+  };
+
+  if (btnUndo) btnUndo.addEventListener('click', _doUndo);
+  if (btnRedo) btnRedo.addEventListener('click', _doRedo);
 
   // Global Ctrl+Z / Ctrl+Y (outside terminal focus)
   document.addEventListener('keydown', e => {
@@ -182,17 +192,21 @@ function init() {
     if (e.key === 'z' && !e.shiftKey) {
       if (inInput) return; // let terminal handle its own history
       e.preventDefault();
-      const r = commandParser.undo();
-      showToast(r.message, r.success ? 'info' : 'warn');
-      _updateUndoRedoBtns();
+      _doUndo();
     } else if ((e.key === 'y') || (e.key === 'z' && e.shiftKey)) {
       if (inInput) return;
       e.preventDefault();
-      const r = commandParser.redo();
-      showToast(r.message, r.success ? 'info' : 'warn');
-      _updateUndoRedoBtns();
+      _doRedo();
     }
   });
+
+  /* ══ 6e. Mobile more-menu (mirrors desktop buttons) ════════ */
+
+  setupMobileMoreMenu({
+    _doSave, _doUndo, _doRedo, _doExportSTL, _doExportHTML,
+    modelImporter, commandParser,
+  });
+
   /* ══ 7. UI Components ══════════════════════════════════════ */
 
   const terminal         = new Terminal(commandParser);
@@ -327,11 +341,6 @@ function setupMobileLayout() {
     if (!isOpen) document.body.classList.add('show-properties');
   });
 
-  btnTerm.addEventListener('click', () => {
-    document.body.classList.toggle('show-terminal');
-    closeDrawers();
-  });
-
   backdrop.addEventListener('click', () => {
     closeDrawers();
   });
@@ -343,4 +352,81 @@ function setupMobileLayout() {
       document.body.classList.remove('show-terminal');
     }
   });
+
+  // ── Visual Viewport: keep layout correct when soft keyboard opens ──
+  // On iOS/Android the visual viewport shrinks when the keyboard appears.
+  // We update a CSS variable so the app layout can respond.
+  if ('visualViewport' in window) {
+    const vv = window.visualViewport;
+    const applyVV = () => {
+      document.documentElement.style.setProperty('--vvh', `${vv.height}px`);
+    };
+    vv.addEventListener('resize', applyVV);
+    vv.addEventListener('scroll', applyVV);
+    applyVV();
+  }
+
+  // ── Mobile Send button ──────────────────────────────────────────────
+  const btnSend = document.getElementById('btn-terminal-send');
+  const termInput = document.getElementById('terminal-input');
+
+  btnTerm.addEventListener('click', () => {
+    const wasOpen = document.body.classList.contains('show-terminal');
+    closeDrawers();
+    document.body.classList.toggle('show-terminal', !wasOpen);
+    // If opening the terminal, focus the input after the CSS transition settles
+    if (!wasOpen && termInput) {
+      setTimeout(() => termInput.focus(), 280);
+    }
+  });
+
+  if (btnSend && termInput) {
+    btnSend.addEventListener('click', () => {
+      // Dispatch an Enter keydown so the Terminal class handles submission
+      termInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      termInput.focus();
+    });
+  }
+}
+
+/**
+ * Wire up the mobile ⋮ more-actions dropdown that mirrors the desktop header buttons.
+ */
+function setupMobileMoreMenu({ _doSave, _doUndo, _doRedo, _doExportSTL, _doExportHTML, modelImporter, commandParser }) {
+  const btn  = document.getElementById('btn-mobile-more');
+  const menu = document.getElementById('mobile-more-menu');
+  if (!btn || !menu) return;
+
+  const openMenu = () => {
+    menu.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+    menu.removeAttribute('aria-hidden');
+  };
+  const closeMenu = () => {
+    menu.classList.remove('open');
+    btn.setAttribute('aria-expanded', 'false');
+    menu.setAttribute('aria-hidden', 'true');
+  };
+  const toggleMenu = () => menu.classList.contains('open') ? closeMenu() : openMenu();
+
+  btn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
+
+  // Close when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target) && !btn.contains(e.target)) closeMenu();
+  });
+
+  // Wire menu items — each closes the menu after acting
+  const wire = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', () => { closeMenu(); fn(); });
+  };
+
+  wire('btn-undo-m',       _doUndo);
+  wire('btn-redo-m',       _doRedo);
+  wire('btn-import-m',     () => modelImporter.openPicker());
+  wire('btn-save-m',       _doSave);
+  wire('btn-load-m',       () => commandParser.execute('load'));
+  wire('btn-export-stl-m', _doExportSTL);
+  wire('btn-export-html-m', _doExportHTML);
 }
