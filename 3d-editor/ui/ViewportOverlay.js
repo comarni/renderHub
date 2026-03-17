@@ -149,6 +149,51 @@ export class ViewportOverlay {
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
+      this._showPressedKeys(e);
+
+      // Extended editor shortcuts for quick validation of mesh-edit features
+      if (e.shiftKey && e.code === 'Slash') {
+        e.preventDefault();
+        this._toggleShortcutsPanel();
+        return;
+      }
+
+      if (e.shiftKey && e.code === 'Digit1') {
+        e.preventDefault();
+        this._runOnPrimary((id) => `select face ${id} 0`);
+        return;
+      }
+      if (e.shiftKey && e.code === 'Digit2') {
+        e.preventDefault();
+        this._runOnPrimary((id) => `select edge ${id} 0`);
+        return;
+      }
+      if (e.shiftKey && e.code === 'Digit3') {
+        e.preventDefault();
+        this._runOnPrimary((id) => `select vertex ${id} 0`);
+        return;
+      }
+      if (e.shiftKey && e.code === 'KeyE') {
+        e.preventDefault();
+        this._execShortcutCommand('extrude selection 0.1');
+        return;
+      }
+      if (e.shiftKey && e.code === 'KeyB') {
+        e.preventDefault();
+        this._execShortcutCommand('subdivide selection 1');
+        return;
+      }
+      if (e.shiftKey && e.code === 'KeyM') {
+        e.preventDefault();
+        this._runOnPrimary((id) => `merge vertices ${id} distance=0.0001`);
+        return;
+      }
+      if (e.shiftKey && e.code === 'KeyN') {
+        e.preventDefault();
+        this._runOnPrimary((id) => `recalc normals ${id}`);
+        return;
+      }
+
       switch (e.key.toLowerCase()) {
         case 'g': this.sel.setMode('translate'); this._setActiveTransformBtn('translate'); break;
         case 'r': this.sel.setMode('rotate');    this._setActiveTransformBtn('rotate');    break;
@@ -198,6 +243,59 @@ export class ViewportOverlay {
   _setupSpaceButton() {
     const btn = document.getElementById('btn-space');
     if (btn) btn.addEventListener('click', () => this._setActiveSpaceBtn(this.sel.toggleSpace()));
+  }
+
+  _execShortcutCommand(command) {
+    const result = this.parser.execute(command);
+    EventBus.emit('terminal:log', {
+      type: result.success ? 'info' : 'error',
+      message: `[shortcut] ${command} → ${result.message}`,
+    });
+  }
+
+  _runOnPrimary(commandBuilder) {
+    const rec = this.sel.getPrimary();
+    if (!rec) {
+      EventBus.emit('terminal:log', {
+        type: 'warn',
+        message: '[shortcut] Select an object first.',
+      });
+      return;
+    }
+    const command = commandBuilder(rec.id);
+    this._execShortcutCommand(command);
+  }
+
+  _toggleShortcutsPanel() {
+    const panel = document.getElementById('shortcuts-panel');
+    if (!panel) return;
+    panel.classList.toggle('hidden');
+  }
+
+  _showPressedKeys(e) {
+    const hud = document.getElementById('key-pressed-hud');
+    if (!hud) return;
+
+    const keys = [];
+    if (e.ctrlKey) keys.push('Ctrl');
+    if (e.metaKey) keys.push('Meta');
+    if (e.altKey) keys.push('Alt');
+    if (e.shiftKey) keys.push('Shift');
+
+    let key = e.key;
+    if (key === ' ') key = 'Space';
+    if (key.length === 1) key = key.toUpperCase();
+    keys.push(key);
+
+    hud.textContent = keys.join(' + ');
+    hud.classList.remove('hidden');
+    hud.classList.add('visible');
+
+    clearTimeout(this._pressedKeyTimer);
+    this._pressedKeyTimer = setTimeout(() => {
+      hud.classList.remove('visible');
+      hud.classList.add('hidden');
+    }, 550);
   }
 
   _setupMobileDock() {

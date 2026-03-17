@@ -3,6 +3,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import * as THREE from 'three';
+import { mergeVertices }       from 'three/addons/utils/BufferGeometryUtils.js';
 import { EventBus }            from '../core/EventBus.js';
 import { NLPParser }           from '../ai/NLPParser.js';
 import { ProceduralGenerator } from '../ai/ProceduralGenerator.js';
@@ -22,6 +23,8 @@ Available commands:
   select <name|all>     — select Cube.001
   select object <id>    — select object obj_xxx
   select face <id> <faceIndex> — select face obj_xxx 0
+  select edge <id> <edgeIndex> — select edge obj_xxx 0
+  select vertex <id> <vertexIndex> — select vertex obj_xxx 0
   deselect              — clear selection
   move <x> <y> <z>      — move 0 1.5 0
   translate <id> <x> <y> <z> — translate obj_xxx 0 1 0
@@ -35,6 +38,9 @@ Available commands:
   shading <id> flat|smooth   — shading obj_xxx smooth
   recalc normals <id>        — recalc normals obj_xxx
   extrude selection <distance> — extrude selection 0.2
+  subdivide selection <iterations> — subdivide selection 1
+  merge vertices <id> distance=<value> — merge vertices obj_xxx distance=0.0001
+  remove doubles <id> distance=<value> — remove doubles obj_xxx distance=0.0001
   material <preset>     — plastic|metal|matte|glass|rubber|chrome|gold|wood|concrete|ceramic|carbon|velvet
   roughness <0-1>       — roughness 0.3
   metalness <0-1>       — metalness 0.8
@@ -124,6 +130,9 @@ export class CommandParser {
         case 'select':     return this._select(args);
         case 'translate':  return this._translate(args);
         case 'extrude':    return this._extrude(args);
+        case 'subdivide':  return this._subdivide(args);
+        case 'merge':      return this._merge(args);
+        case 'remove':     return this._remove(args);
         case 'deselect':   return this._deselect();
         case 'move':       return this._move(args);
         case 'rotate':     return this._rotate(args);
@@ -272,6 +281,22 @@ export class CommandParser {
         return { success: false, message: 'Usage: select face <id|name> <faceIndex>' };
       }
       return this.sel.selectFaceByObjectToken(token, faceIndex);
+    }
+    if (args[0].toLowerCase() === 'edge') {
+      const token = args[1];
+      const edgeIndex = parseInt(args[2], 10);
+      if (!token || !Number.isInteger(edgeIndex)) {
+        return { success: false, message: 'Usage: select edge <id|name> <edgeIndex>' };
+      }
+      return this.sel.selectEdgeByObjectToken(token, edgeIndex);
+    }
+    if (args[0].toLowerCase() === 'vertex') {
+      const token = args[1];
+      const vertexIndex = parseInt(args[2], 10);
+      if (!token || !Number.isInteger(vertexIndex)) {
+        return { success: false, message: 'Usage: select vertex <id|name> <vertexIndex>' };
+      }
+      return this.sel.selectVertexByObjectToken(token, vertexIndex);
     }
     if (args[0].toLowerCase() === 'object') {
       const token = args.slice(1).join(' ');
@@ -537,6 +562,70 @@ export class CommandParser {
     return this.sel.extrudeSelectedFace(dist);
   }
 
+  _subdivide(args) {
+    if ((args[0] || '').toLowerCase() !== 'selection') {
+      return { success: false, message: 'Usage: subdivide selection <iterations>' };
+    }
+    const iterations = Math.max(1, Math.min(3, parseInt(args[1], 10) || 1));
+    const rec = this._requireSelection();
+    if (rec._error) return rec;
+
+    const mesh = this._getEditableMesh(rec.mesh);
+    if (!mesh?.geometry?.attributes?.position) {
+      return { success: false, message: `Object "${rec.name}" has no editable mesh geometry.` };
+    }
+
+    for (let i = 0; i < iterations; i++) {
+      mesh.geometry = this._subdivideGeometry(mesh.geometry);
+    }
+
+    mesh.geometry.computeVertexNormals();
+    mesh.geometry.computeBoundingBox();
+    mesh.geometry.computeBoundingSphere();
+    EventBus.emit('state:changed', { type: 'geometry' });
+    return { success: true, message: `Subdivided "${rec.name}" x${iterations}` };
+  }
+
+  _merge(args) {
+    if ((args[0] || '').toLowerCase() !== 'vertices') {
+      return { success: false, message: 'Usage: merge vertices <id> distance=<value>' };
+    }
+    return this._mergeVerticesByDistance(args.slice(1), 'merge vertices');
+  }
+
+  _remove(args) {
+    if ((args[0] || '').toLowerCase() !== 'doubles') {
+      return { success: false, message: 'Usage: remove doubles <id> distance=<value>' };
+    }
+    return this._mergeVerticesByDistance(args.slice(1), 'remove doubles');
+  }
+
+  _mergeVerticesByDistance(args, label) {
+    const token = args[0];
+    const rec = token ? this._findRecord(token) : this._requireSelection();
+    if (!rec || rec._error) return rec._error ? rec : { success: false, message: `Object not found: "${token}"` };
+
+    const mesh = this._getEditableMesh(rec.mesh);
+    if (!mesh?.geometry?.attributes?.position) {
+      return { success: false, message: `Object "${rec.name}" has no editable mesh geometry.` };
+    }
+
+    const distToken = args.find(t => /^distance=/i.test(t)) || 'distance=0.0001';
+    const distance = Math.max(0, parseFloat(distToken.split('=')[1]) || 0.0001);
+
+    const before = mesh.geometry.attributes.position.count;
+    const merged = mergeVertices(mesh.geometry.clone(), distance);
+    merged.computeVertexNormals();
+    merged.computeBoundingBox();
+    merged.computeBoundingSphere();
+    mesh.geometry.dispose();
+    mesh.geometry = merged;
+    const after = mesh.geometry.attributes.position.count;
+
+    EventBus.emit('state:changed', { type: 'geometry' });
+    return { success: true, message: `${label} on "${rec.name}": ${before} → ${after} vertices` };
+  }
+
   _set(args) {
     if (!args.length) return { success: false, message: 'Usage: set color <id> <r> <g> <b>' };
     const sub = args[0].toLowerCase();
@@ -596,6 +685,41 @@ export class CommandParser {
   _findRecord(token) {
     if (!token) return null;
     return this.objs.getById(token) || this.objs.getByName(token) || null;
+  }
+
+  _getEditableMesh(root) {
+    if (root?.isMesh && root.geometry?.attributes?.position) return root;
+    let found = null;
+    root?.traverse(child => {
+      if (!found && child.isMesh && child.geometry?.attributes?.position) found = child;
+    });
+    return found;
+  }
+
+  _subdivideGeometry(sourceGeometry) {
+    const src = sourceGeometry.index ? sourceGeometry.toNonIndexed() : sourceGeometry.clone();
+    const pos = src.attributes.position;
+    const out = [];
+
+    for (let i = 0; i < pos.count; i += 3) {
+      const a = new THREE.Vector3().fromBufferAttribute(pos, i);
+      const b = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
+      const c = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+
+      const ab = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+      const bc = new THREE.Vector3().addVectors(b, c).multiplyScalar(0.5);
+      const ca = new THREE.Vector3().addVectors(c, a).multiplyScalar(0.5);
+
+      out.push(a.x, a.y, a.z, ab.x, ab.y, ab.z, ca.x, ca.y, ca.z);
+      out.push(ab.x, ab.y, ab.z, b.x, b.y, b.z, bc.x, bc.y, bc.z);
+      out.push(ca.x, ca.y, ca.z, bc.x, bc.y, bc.z, c.x, c.y, c.z);
+      out.push(ab.x, ab.y, ab.z, bc.x, bc.y, bc.z, ca.x, ca.y, ca.z);
+    }
+
+    const next = new THREE.BufferGeometry();
+    next.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
+    src.dispose();
+    return next;
   }
 
   _resolveTargetOrSelection(args, command) {

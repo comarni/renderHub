@@ -31,9 +31,14 @@ export class SelectionManager {
     this.raycaster = new THREE.Raycaster();
     this._pointer  = new THREE.Vector2();
 
-    // Face-selection state (editor mode)
+    // Sub-selection states (editor mode)
     this._faceSelection = null;
+    this._edgeSelection = null;
+    this._vertexSelection = null;
+
     this._faceOutline = null;
+    this._edgeOutline = null;
+    this._vertexMarker = null;
 
     // Pivot group used for multi-object transform
     this._pivotGroup = null;
@@ -148,7 +153,7 @@ export class SelectionManager {
   deselectAll() {
     this._clearEmissive();
     this.selected.clear();
-    this.clearFaceSelection();
+    this.clearSubSelection();
     this._detachGizmo();
     EventBus.emit('state:changed', { type: 'selection' });
     EventBus.emit('selection:changed', { ids: new Set() });
@@ -188,19 +193,76 @@ export class SelectionManager {
     }
 
     this.selectByIds([rec.id], false);
-    this._faceSelection = { objectId: rec.id, mesh, faceIndex };
-    this._updateFaceOutline();
+    this._setSubSelection({ objectId: rec.id, mesh, faceIndex }, null, null);
+    this._updateSubSelectionVisuals();
     EventBus.emit('state:changed', { type: 'selection' });
     return { success: true, message: `Selected face ${faceIndex} on "${rec.name}"` };
   }
 
-  clearFaceSelection() {
+  selectEdgeByObjectToken(objectToken, edgeIndex) {
+    const rec = this.objs.getById(objectToken) || this.objs.getByName(objectToken);
+    if (!rec) return { success: false, message: `Object not found: "${objectToken}"` };
+
+    const mesh = this._findEditableMesh(rec.mesh);
+    if (!mesh || !mesh.geometry || !mesh.geometry.attributes?.position) {
+      return { success: false, message: `Object "${rec.name}" has no editable mesh geometry.` };
+    }
+
+    const edges = this._buildEdges(mesh.geometry);
+    if (edgeIndex < 0 || edgeIndex >= edges.length) {
+      return { success: false, message: `Edge index out of range: ${edgeIndex} (0..${Math.max(0, edges.length - 1)})` };
+    }
+
+    this.selectByIds([rec.id], false);
+    this._setSubSelection(null, { objectId: rec.id, mesh, edgeIndex, edges }, null);
+    this._updateSubSelectionVisuals();
+    EventBus.emit('state:changed', { type: 'selection' });
+    return { success: true, message: `Selected edge ${edgeIndex} on "${rec.name}"` };
+  }
+
+  selectVertexByObjectToken(objectToken, vertexIndex) {
+    const rec = this.objs.getById(objectToken) || this.objs.getByName(objectToken);
+    if (!rec) return { success: false, message: `Object not found: "${objectToken}"` };
+
+    const mesh = this._findEditableMesh(rec.mesh);
+    const pos = mesh?.geometry?.attributes?.position;
+    if (!mesh || !pos) {
+      return { success: false, message: `Object "${rec.name}" has no editable mesh geometry.` };
+    }
+
+    if (vertexIndex < 0 || vertexIndex >= pos.count) {
+      return { success: false, message: `Vertex index out of range: ${vertexIndex} (0..${pos.count - 1})` };
+    }
+
+    this.selectByIds([rec.id], false);
+    this._setSubSelection(null, null, { objectId: rec.id, mesh, vertexIndex });
+    this._updateSubSelectionVisuals();
+    EventBus.emit('state:changed', { type: 'selection' });
+    return { success: true, message: `Selected vertex ${vertexIndex} on "${rec.name}"` };
+  }
+
+  clearSubSelection() {
     this._faceSelection = null;
+    this._edgeSelection = null;
+    this._vertexSelection = null;
+
     if (this._faceOutline) {
-      this.scene.remove(this._faceOutline);
+      this._faceOutline.removeFromParent();
       this._faceOutline.geometry.dispose();
       this._faceOutline.material.dispose();
       this._faceOutline = null;
+    }
+    if (this._edgeOutline) {
+      this._edgeOutline.removeFromParent();
+      this._edgeOutline.geometry.dispose();
+      this._edgeOutline.material.dispose();
+      this._edgeOutline = null;
+    }
+    if (this._vertexMarker) {
+      this._vertexMarker.removeFromParent();
+      this._vertexMarker.geometry.dispose();
+      this._vertexMarker.material.dispose();
+      this._vertexMarker = null;
     }
   }
 
@@ -282,7 +344,7 @@ export class SelectionManager {
     geo.computeBoundingBox();
     geo.computeBoundingSphere();
 
-    this._updateFaceOutline();
+    this._updateSubSelectionVisuals();
     EventBus.emit('state:changed', { type: 'geometry' });
     return { success: true, message: `Extruded face ${faceIndex} by ${amount.toFixed(3)}` };
   }
@@ -362,7 +424,7 @@ export class SelectionManager {
     const id = hitMesh.userData.editorId;
     if (!id) return;
 
-    this.clearFaceSelection();
+    this.clearSubSelection();
 
     if (event.shiftKey) {
       // Shift-click: toggle in selection
@@ -415,6 +477,63 @@ export class SelectionManager {
     return [base, base + 1, base + 2];
   }
 
+  _buildEdges(geo) {
+    const edges = [];
+    const set = new Set();
+    const triCount = this._getTriangleCount(geo);
+
+    for (let f = 0; f < triCount; f++) {
+      const tri = this._getFaceTriangle(geo, f);
+      if (!tri) continue;
+      const pairs = [
+        [tri[0], tri[1]],
+        [tri[1], tri[2]],
+        [tri[2], tri[0]],
+      ];
+
+      pairs.forEach(([a, b]) => {
+        const min = Math.min(a, b);
+        const max = Math.max(a, b);
+        const key = `${min}:${max}`;
+        if (set.has(key)) return;
+        set.add(key);
+        edges.push([min, max]);
+      });
+    }
+
+    return edges;
+  }
+
+  _setSubSelection(face, edge, vertex) {
+    this._faceSelection = face;
+    this._edgeSelection = edge;
+    this._vertexSelection = vertex;
+    if (!face && this._faceOutline) {
+      this._faceOutline.removeFromParent();
+      this._faceOutline.geometry.dispose();
+      this._faceOutline.material.dispose();
+      this._faceOutline = null;
+    }
+    if (!edge && this._edgeOutline) {
+      this._edgeOutline.removeFromParent();
+      this._edgeOutline.geometry.dispose();
+      this._edgeOutline.material.dispose();
+      this._edgeOutline = null;
+    }
+    if (!vertex && this._vertexMarker) {
+      this._vertexMarker.removeFromParent();
+      this._vertexMarker.geometry.dispose();
+      this._vertexMarker.material.dispose();
+      this._vertexMarker = null;
+    }
+  }
+
+  _updateSubSelectionVisuals() {
+    if (this._faceSelection) this._updateFaceOutline();
+    if (this._edgeSelection) this._updateEdgeOutline();
+    if (this._vertexSelection) this._updateVertexMarker();
+  }
+
   _updateFaceOutline() {
     if (!this._faceSelection) return;
     const { mesh, faceIndex } = this._faceSelection;
@@ -425,24 +544,76 @@ export class SelectionManager {
     const tri = this._getFaceTriangle(geo, faceIndex);
     if (!tri) return;
 
-    const p0 = new THREE.Vector3().fromBufferAttribute(pos, tri[0]).applyMatrix4(mesh.matrixWorld);
-    const p1 = new THREE.Vector3().fromBufferAttribute(pos, tri[1]).applyMatrix4(mesh.matrixWorld);
-    const p2 = new THREE.Vector3().fromBufferAttribute(pos, tri[2]).applyMatrix4(mesh.matrixWorld);
+    const p0 = new THREE.Vector3().fromBufferAttribute(pos, tri[0]);
+    const p1 = new THREE.Vector3().fromBufferAttribute(pos, tri[1]);
+    const p2 = new THREE.Vector3().fromBufferAttribute(pos, tri[2]);
 
     const outlineGeo = new THREE.BufferGeometry().setFromPoints([p0, p1, p2, p0]);
     if (!this._faceOutline) {
       const mat = new THREE.LineBasicMaterial({ color: 0x4fd4ff, depthTest: false, transparent: true, opacity: 0.95 });
       this._faceOutline = new THREE.Line(outlineGeo, mat);
       this._faceOutline.renderOrder = 999;
-      this.scene.add(this._faceOutline);
+      mesh.add(this._faceOutline);
     } else {
       this._faceOutline.geometry.dispose();
       this._faceOutline.geometry = outlineGeo;
+      if (this._faceOutline.parent !== mesh) {
+        this._faceOutline.removeFromParent();
+        mesh.add(this._faceOutline);
+      }
     }
   }
 
+  _updateEdgeOutline() {
+    if (!this._edgeSelection) return;
+    const { mesh, edgeIndex, edges } = this._edgeSelection;
+    const geo = mesh.geometry;
+    const pos = geo?.attributes?.position;
+    if (!pos || !edges || !edges[edgeIndex]) return;
+
+    const [aIdx, bIdx] = edges[edgeIndex];
+    const a = new THREE.Vector3().fromBufferAttribute(pos, aIdx);
+    const b = new THREE.Vector3().fromBufferAttribute(pos, bIdx);
+
+    const edgeGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
+    if (!this._edgeOutline) {
+      const mat = new THREE.LineBasicMaterial({ color: 0xffcf4d, depthTest: false, transparent: true, opacity: 0.95 });
+      this._edgeOutline = new THREE.Line(edgeGeo, mat);
+      this._edgeOutline.renderOrder = 999;
+      mesh.add(this._edgeOutline);
+    } else {
+      this._edgeOutline.geometry.dispose();
+      this._edgeOutline.geometry = edgeGeo;
+      if (this._edgeOutline.parent !== mesh) {
+        this._edgeOutline.removeFromParent();
+        mesh.add(this._edgeOutline);
+      }
+    }
+  }
+
+  _updateVertexMarker() {
+    if (!this._vertexSelection) return;
+    const { mesh, vertexIndex } = this._vertexSelection;
+    const pos = mesh.geometry?.attributes?.position;
+    if (!pos) return;
+
+    const p = new THREE.Vector3().fromBufferAttribute(pos, vertexIndex);
+    if (!this._vertexMarker) {
+      const geo = new THREE.SphereGeometry(0.04, 12, 12);
+      const mat = new THREE.MeshBasicMaterial({ color: 0x7dff8d, depthTest: false });
+      this._vertexMarker = new THREE.Mesh(geo, mat);
+      this._vertexMarker.renderOrder = 999;
+      mesh.add(this._vertexMarker);
+    } else if (this._vertexMarker.parent !== mesh) {
+      this._vertexMarker.removeFromParent();
+      mesh.add(this._vertexMarker);
+    }
+
+    this._vertexMarker.position.copy(p);
+  }
+
   dispose() {
-    this.clearFaceSelection();
+    this.clearSubSelection();
     this._detachGizmo();
     this.scene.remove(this.transformControls);
     this.transformControls.dispose();
