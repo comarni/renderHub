@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portfolio Cubo 3D</title>
+  <meta name="description" content="Portfolio 3D basado en un cubo interactivo con fallback accesible." />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main id="app">
+    <section id="hud" aria-live="polite">
+      <span id="active-face-label">Inicio</span>
+      <span id="active-face-index">1 / 6</span>
+    </section>
+
+    <section id="scene-wrap" aria-label="Escena 3D del portfolio">
+      <canvas id="scene-canvas" aria-hidden="true"></canvas>
+
+      <article class="face-content" data-face="inicio" id="panel-inicio">
+        <h1>Inicio / Hero</h1>
+        <p>Contenido del portfolio original.</p>
+      </article>
+      <article class="face-content" data-face="proyectos" id="panel-proyectos">
+        <h2>Proyectos</h2>
+        <p>Contenido del portfolio original.</p>
+      </article>
+      <article class="face-content" data-face="habilidades" id="panel-habilidades">
+        <h2>Habilidades</h2>
+        <p>Contenido del portfolio original.</p>
+      </article>
+      <article class="face-content" data-face="sobre-mi" id="panel-sobre-mi">
+        <h2>Sobre mi</h2>
+        <p>Contenido del portfolio original.</p>
+      </article>
+      <article class="face-content" data-face="testimonios" id="panel-testimonios">
+        <h2>Testimonios</h2>
+        <p>Contenido del portfolio original.</p>
+      </article>
+      <article class="face-content" data-face="contacto" id="panel-contacto">
+        <h2>Contacto</h2>
+        <p>Contenido del portfolio original.</p>
+      </article>
+    </section>
+
+    <section id="fallback" hidden>
+      <h1>Portfolio</h1>
+      <nav>
+        <a href="#inicio">Inicio</a>
+        <a href="#proyectos">Proyectos</a>
+        <a href="#habilidades">Habilidades</a>
+        <a href="#sobre-mi">Sobre mi</a>
+        <a href="#testimonios">Testimonios</a>
+        <a href="#contacto">Contacto</a>
+      </nav>
+      <section id="inicio"><h2>Inicio</h2><p>Contenido del portfolio original.</p></section>
+      <section id="proyectos"><h2>Proyectos</h2><p>Contenido del portfolio original.</p></section>
+      <section id="habilidades"><h2>Habilidades</h2><p>Contenido del portfolio original.</p></section>
+      <section id="sobre-mi"><h2>Sobre mi</h2><p>Contenido del portfolio original.</p></section>
+      <section id="testimonios"><h2>Testimonios</h2><p>Contenido del portfolio original.</p></section>
+      <section id="contacto"><h2>Contacto</h2><p>Contenido del portfolio original.</p></section>
+    </section>
+  </main>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.163.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

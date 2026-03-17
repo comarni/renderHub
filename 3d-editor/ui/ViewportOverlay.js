@@ -19,6 +19,7 @@ export class ViewportOverlay {
 
     this._setupViewButtons();
     this._setupTransformButtons();
+    this._setupSubSelectButtons();
     this._setupWireframeToggle();
     this._setupExportButton();
     this._setupStats();
@@ -86,6 +87,25 @@ export class ViewportOverlay {
     if (!btn) return;
     btn.textContent = space === 'world' ? 'World' : 'Local';
     btn.classList.toggle('local', space === 'local');
+  }
+
+  _setupSubSelectButtons() {
+    document.querySelectorAll('.btn-subselect').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.pick;
+        if (!mode) return;
+        this.sel.activateSubEditTool('move');
+        this.sel.setPickMode(mode);
+        this._setActiveSubSelectBtn(mode);
+      });
+    });
+    this._setActiveSubSelectBtn(this.sel.pickMode || 'object');
+  }
+
+  _setActiveSubSelectBtn(mode) {
+    document.querySelectorAll('.btn-subselect').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.pick === mode);
+    });
   }
 
   /* ── Wireframe toggle ─────────────────────────────────────── */
@@ -158,6 +178,19 @@ export class ViewportOverlay {
         return;
       }
 
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && ['1', '2', '3', '4'].includes(e.key)) {
+        const keyMode = { '1': 'object', '2': 'face', '3': 'edge', '4': 'vertex' };
+        const mode = keyMode[e.key];
+        this.sel.activateSubEditTool('move');
+        this.sel.setPickMode(mode);
+        this._setActiveSubSelectBtn(mode);
+        EventBus.emit('terminal:log', {
+          type: 'info',
+          message: `[cursor] Selection mode: ${mode}`,
+        });
+        return;
+      }
+
       if (e.shiftKey && e.code === 'Digit1') {
         e.preventDefault();
         this._runOnPrimary((id) => `select face ${id} 0`);
@@ -175,7 +208,12 @@ export class ViewportOverlay {
       }
       if (e.shiftKey && e.code === 'KeyE') {
         e.preventDefault();
-        this._execShortcutCommand('extrude selection 0.1');
+        const state = this.sel.activateSubEditTool('extrude');
+        this._setActiveSubSelectBtn(state.pickMode);
+        EventBus.emit('terminal:log', {
+          type: 'info',
+          message: '[shortcut] Edit mode EXTRUDE activo: click y arrastra sobre una cara.',
+        });
         return;
       }
       if (e.shiftKey && e.code === 'KeyB') {
@@ -199,6 +237,7 @@ export class ViewportOverlay {
         case 'r': this.sel.setMode('rotate');    this._setActiveTransformBtn('rotate');    break;
         case 's': this.sel.setMode('scale');     this._setActiveTransformBtn('scale');     break;
         case 'escape':
+          this.sel.clearSubSelection();
           this.sel.deselectAll();
           break;
         case 'w':

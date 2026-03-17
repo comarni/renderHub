@@ -30,6 +30,7 @@ export class SelectionManager {
 
     this.raycaster = new THREE.Raycaster();
     this._pointer  = new THREE.Vector2();
+    this._domElement = renderer.domElement;
 
     // Sub-selection states (editor mode)
     this._faceSelection = null;
@@ -40,6 +41,17 @@ export class SelectionManager {
     this._edgeOutline = null;
     this._vertexMarker = null;
 
+    this._pickMode = 'object'; // 'object' | 'face' | 'edge' | 'vertex'
+    this._subEditTool = 'move'; // 'move' | 'extrude'
+
+    this._pointerDown = false;
+    this._pointerMoved = false;
+    this._pointerDownPos = { x: 0, y: 0 };
+    this._dragState = null;
+    this._dragPlane = new THREE.Plane();
+    this._dragStartWorld = new THREE.Vector3();
+    this._dragCurrentWorld = new THREE.Vector3();
+
     // Pivot group used for multi-object transform
     this._pivotGroup = null;
 
@@ -49,9 +61,10 @@ export class SelectionManager {
       renderer.domElement
     );
     this.transformControls.setMode(this._transformMode);
-    this.transformControls.setSize(0.8);
+    this.transformControls.setSize(0.62);
     this.transformControls.name = '__transformControls';
     scene.add(this.transformControls);
+    this._styleTransformGizmo();
 
     // Space (world vs local)
     this._space = 'world';
@@ -81,9 +94,15 @@ export class SelectionManager {
       EventBus.emit('state:changed', { type: 'transform' });
     });
 
-    // Click listener on the renderer canvas
-    this._onClick = this._handleClick.bind(this);
-    renderer.domElement.addEventListener('click', this._onClick);
+    // Pointer listeners on the renderer canvas
+    this._onPointerDown = this._handlePointerDown.bind(this);
+    this._onPointerMove = this._handlePointerMove.bind(this);
+    this._onPointerUp = this._handlePointerUp.bind(this);
+
+    this._domElement.addEventListener('pointerdown', this._onPointerDown);
+    window.addEventListener('pointermove', this._onPointerMove);
+    this._domElement.addEventListener('pointerup', this._onPointerUp);
+    window.addEventListener('pointerup', this._onPointerUp);
   }
 
   /* ── Transform mode ───────────────────────────────────────── */
@@ -98,6 +117,27 @@ export class SelectionManager {
   }
 
   get mode() { return this._transformMode; }
+
+  setPickMode(mode) {
+    const next = ['object', 'face', 'edge', 'vertex'].includes(mode) ? mode : 'object';
+    this._pickMode = next;
+    if (next === 'object') this.clearSubSelection();
+    if (next === 'object') this._subEditTool = 'move';
+    EventBus.emit('state:changed', { type: 'selection' });
+    return this._pickMode;
+  }
+
+  get pickMode() { return this._pickMode; }
+
+  activateSubEditTool(tool) {
+    const next = ['move', 'extrude'].includes(tool) ? tool : 'move';
+    this._subEditTool = next;
+    if (next === 'extrude') this.setPickMode('face');
+    EventBus.emit('state:changed', { type: 'selection' });
+    return { pickMode: this._pickMode, tool: this._subEditTool };
+  }
+
+  get subEditTool() { return this._subEditTool; }
 
   /** Toggle between 'world' and 'local' transform space. Returns new space. */
   toggleSpace() {
@@ -403,8 +443,7 @@ export class SelectionManager {
     // Don't select if the TransformControls gizmo is being interacted with
     if (this.transformControls.dragging) return;
 
-    const canvas = event.target;
-    const rect   = canvas.getBoundingClientRect();
+    const rect = this._domElement.getBoundingClientRect();
 
     this._pointer.x = ((event.clientX - rect.left) / rect.width)  * 2 - 1;
     this._pointer.y = -((event.clientY - rect.top)  / rect.height) * 2 + 1;
@@ -421,8 +460,16 @@ export class SelectionManager {
     }
 
     const hitMesh = hits[0].object;
-    const id = hitMesh.userData.editorId;
+    const id = this._getEditorIdFromObject(hitMesh);
     if (!id) return;
+
+    if (this._pickMode !== 'object') {
+      const res = this._selectSubElementFromHit(hits[0], id);
+      if (res) {
+        EventBus.emit('state:changed', { type: 'selection' });
+        return;
+      }
+    }
 
     this.clearSubSelection();
 
@@ -442,6 +489,54 @@ export class SelectionManager {
     }
   }
 
+  _handlePointerDown(event) {
+    if (event.button !== 0) return;
+    this._pointerDown = true;
+    this._pointerMoved = false;
+    this._pointerDownPos.x = event.clientX;
+    this._pointerDownPos.y = event.clientY;
+
+    if (this._pickMode === 'object') return;
+    if (this.transformControls.dragging) return;
+    const hit = this._raycastFromEvent(event);
+    if (!hit) return;
+
+    const hitId = this._getEditorIdFromObject(hit.object);
+    if (!hitId) return;
+
+    if (!this._hasActiveSubSelection() || !this._isHitCurrentSubSelection(hit)) {
+      this._selectSubElementFromHit(hit, hitId);
+    }
+
+    if (!this._hasActiveSubSelection() || !this._isHitCurrentSubSelection(hit)) return;
+
+    this._startSubDrag(event);
+  }
+
+  _handlePointerMove(event) {
+    if (!this._pointerDown && !this._dragState) return;
+
+    const dx = event.clientX - this._pointerDownPos.x;
+    const dy = event.clientY - this._pointerDownPos.y;
+    if (Math.hypot(dx, dy) > 3) this._pointerMoved = true;
+
+    if (!this._dragState) return;
+    this._applyDragToGeometry(event);
+  }
+
+  _handlePointerUp(event) {
+    if (!this._pointerDown && !this._dragState) return;
+
+    if (this._dragState) {
+      this._endSubDrag();
+    } else if (event.target === this._domElement && !this._pointerMoved) {
+      this._handleClick(event);
+    }
+
+    this._pointerDown = false;
+    this._pointerMoved = false;
+  }
+
   /** Update TransformControls camera reference (needed when switching views) */
   updateCamera() {
     this.transformControls.camera = this.cam.activeCamera;
@@ -454,6 +549,260 @@ export class SelectionManager {
       if (!found && child.isMesh && child.geometry?.attributes?.position) found = child;
     });
     return found;
+  }
+
+  _rayFromEvent(event) {
+    const rect = this._domElement.getBoundingClientRect();
+    this._pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this._pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this._pointer, this.cam.activeCamera);
+    return this.raycaster.ray;
+  }
+
+  _raycastFromEvent(event) {
+    this._rayFromEvent(event);
+    const meshes = this.objs.getMeshes();
+    const hits = this.raycaster.intersectObjects(meshes, false);
+    return hits[0] || null;
+  }
+
+  _getEditorIdFromObject(object) {
+    let curr = object;
+    while (curr) {
+      if (curr.userData?.editorId) return curr.userData.editorId;
+      curr = curr.parent;
+    }
+    return null;
+  }
+
+  _selectSubElementFromHit(hit, objectId) {
+    const mesh = hit.object;
+    const geo = mesh?.geometry;
+    const pos = geo?.attributes?.position;
+    if (!mesh?.isMesh || !pos) return false;
+    if (!Number.isInteger(hit.faceIndex)) return false;
+
+    this.selectByIds([objectId], false);
+
+    if (this._pickMode === 'face') {
+      this._setSubSelection({ objectId, mesh, faceIndex: hit.faceIndex }, null, null);
+      this._updateSubSelectionVisuals();
+      return true;
+    }
+
+    const tri = this._getFaceTriangle(geo, hit.faceIndex);
+    if (!tri) return false;
+    const localPoint = mesh.worldToLocal(hit.point.clone());
+
+    if (this._pickMode === 'vertex') {
+      let bestIndex = tri[0];
+      let bestDist = Infinity;
+      tri.forEach((idx) => {
+        const v = new THREE.Vector3().fromBufferAttribute(pos, idx);
+        const d = v.distanceToSquared(localPoint);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIndex = idx;
+        }
+      });
+      this._setSubSelection(null, null, { objectId, mesh, vertexIndex: bestIndex });
+      this._updateSubSelectionVisuals();
+      return true;
+    }
+
+    if (this._pickMode === 'edge') {
+      const pairs = [
+        [tri[0], tri[1]],
+        [tri[1], tri[2]],
+        [tri[2], tri[0]],
+      ];
+
+      let bestPair = pairs[0];
+      let bestDist = Infinity;
+      pairs.forEach(([aIdx, bIdx]) => {
+        const a = new THREE.Vector3().fromBufferAttribute(pos, aIdx);
+        const b = new THREE.Vector3().fromBufferAttribute(pos, bIdx);
+        const cp = new THREE.Vector3();
+        new THREE.Line3(a, b).closestPointToPoint(localPoint, true, cp);
+        const d = cp.distanceToSquared(localPoint);
+        if (d < bestDist) {
+          bestDist = d;
+          bestPair = [aIdx, bIdx];
+        }
+      });
+
+      const edges = this._buildEdges(geo);
+      const targetMin = Math.min(bestPair[0], bestPair[1]);
+      const targetMax = Math.max(bestPair[0], bestPair[1]);
+      const edgeIndex = edges.findIndex(([a, b]) => {
+        const min = Math.min(a, b);
+        const max = Math.max(a, b);
+        return min === targetMin && max === targetMax;
+      });
+
+      if (edgeIndex < 0) return false;
+      this._setSubSelection(null, { objectId, mesh, edgeIndex, edges }, null);
+      this._updateSubSelectionVisuals();
+      return true;
+    }
+
+    return false;
+  }
+
+  _hasActiveSubSelection() {
+    return Boolean(this._faceSelection || this._edgeSelection || this._vertexSelection);
+  }
+
+  _isHitCurrentSubSelection(hit) {
+    if (!hit?.object) return false;
+    const mesh = this._faceSelection?.mesh || this._edgeSelection?.mesh || this._vertexSelection?.mesh;
+    if (!mesh) return false;
+    return hit.object === mesh;
+  }
+
+  _startSubDrag(event) {
+    const active = this._faceSelection || this._edgeSelection || this._vertexSelection;
+    if (!active?.mesh?.geometry?.attributes?.position) return;
+
+    const indices = this._collectSubSelectionVertexIndices(active.mesh.geometry);
+    if (!indices.length) return;
+
+    const ray = this._rayFromEvent(event);
+    const centroidLocal = new THREE.Vector3();
+    const pos = active.mesh.geometry.attributes.position;
+    indices.forEach((idx) => centroidLocal.add(new THREE.Vector3().fromBufferAttribute(pos, idx)));
+    centroidLocal.divideScalar(indices.length);
+    const centroidWorld = active.mesh.localToWorld(centroidLocal.clone());
+
+    const camNormal = new THREE.Vector3();
+    this.cam.activeCamera.getWorldDirection(camNormal);
+    this._dragPlane.setFromNormalAndCoplanarPoint(camNormal.normalize(), centroidWorld);
+    if (!ray.intersectPlane(this._dragPlane, this._dragStartWorld)) return;
+
+    let dragMode = 'move';
+    let faceNormalWorld = null;
+    if (this._subEditTool === 'extrude' && this._faceSelection) {
+      faceNormalWorld = this._computeFaceNormalWorld(this._faceSelection.mesh, this._faceSelection.faceIndex);
+      if (faceNormalWorld) dragMode = 'extrude';
+    }
+
+    const startPositions = indices.map((index) => ({
+      index,
+      value: new THREE.Vector3().fromBufferAttribute(pos, index),
+    }));
+
+    this._dragState = {
+      mesh: active.mesh,
+      startPositions,
+      mode: dragMode,
+      faceNormalWorld,
+      startMouseY: event.clientY,
+    };
+
+    this.cam.controls.enabled = false;
+  }
+
+  _endSubDrag() {
+    if (!this._dragState) return;
+    this.cam.controls.enabled = true;
+    this._dragState = null;
+    EventBus.emit('state:changed', { type: 'geometry' });
+  }
+
+  _applyDragToGeometry(event) {
+    if (!this._dragState) return;
+    const geometry = this._dragState.mesh.geometry;
+    const pos = geometry?.attributes?.position;
+    if (!pos) return;
+
+    if (this._dragState.mode === 'extrude' && this._dragState.faceNormalWorld) {
+      const amount = (this._dragState.startMouseY - event.clientY) * 0.006;
+      const localNormal = this._dragState.faceNormalWorld.clone().transformDirection(this._dragState.mesh.matrixWorld.clone().invert()).normalize();
+      this._dragState.startPositions.forEach(({ index, value }) => {
+        const moved = value.clone().addScaledVector(localNormal, amount);
+        pos.setXYZ(index, moved.x, moved.y, moved.z);
+      });
+    } else {
+      const ray = this._rayFromEvent(event);
+      if (!ray.intersectPlane(this._dragPlane, this._dragCurrentWorld)) return;
+
+      const deltaWorld = new THREE.Vector3().subVectors(this._dragCurrentWorld, this._dragStartWorld);
+      const originLocal = this._dragState.mesh.worldToLocal(this._dragStartWorld.clone());
+      const targetLocal = this._dragState.mesh.worldToLocal(this._dragStartWorld.clone().add(deltaWorld));
+      const deltaLocal = targetLocal.sub(originLocal);
+
+      this._dragState.startPositions.forEach(({ index, value }) => {
+        pos.setXYZ(index, value.x + deltaLocal.x, value.y + deltaLocal.y, value.z + deltaLocal.z);
+      });
+    }
+
+    pos.needsUpdate = true;
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    this._updateSubSelectionVisuals();
+    EventBus.emit('state:changed', { type: 'geometry' });
+  }
+
+  _computeFaceNormalWorld(mesh, faceIndex) {
+    const geo = mesh?.geometry;
+    const pos = geo?.attributes?.position;
+    const tri = geo ? this._getFaceTriangle(geo, faceIndex) : null;
+    if (!pos || !tri) return null;
+
+    const a = new THREE.Vector3().fromBufferAttribute(pos, tri[0]);
+    const b = new THREE.Vector3().fromBufferAttribute(pos, tri[1]);
+    const c = new THREE.Vector3().fromBufferAttribute(pos, tri[2]);
+    const normalLocal = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize();
+    return normalLocal.transformDirection(mesh.matrixWorld).normalize();
+  }
+
+  _styleTransformGizmo() {
+    this.transformControls.traverse((child) => {
+      if (!child.material) return;
+      if (child.name?.toLowerCase().includes('picker')) return;
+
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach((mat) => {
+        if (!mat || typeof mat !== 'object') return;
+        mat.transparent = true;
+        if (typeof mat.opacity === 'number') mat.opacity = Math.min(mat.opacity, 0.62);
+      });
+    });
+  }
+
+  _collectSubSelectionVertexIndices(geo) {
+    if (this._vertexSelection) {
+      const idx = this._vertexSelection.vertexIndex;
+      return this._withCoincidentVertices(geo, [idx]);
+    }
+    if (this._edgeSelection) {
+      const edge = this._edgeSelection.edges?.[this._edgeSelection.edgeIndex];
+      if (!edge) return [];
+      return this._withCoincidentVertices(geo, edge);
+    }
+    if (this._faceSelection) {
+      const tri = this._getFaceTriangle(geo, this._faceSelection.faceIndex);
+      if (!tri) return [];
+      return this._withCoincidentVertices(geo, tri);
+    }
+    return [];
+  }
+
+  _withCoincidentVertices(geo, seedIndices) {
+    const pos = geo.attributes?.position;
+    if (!pos) return [];
+
+    const all = new Set(seedIndices);
+    const seeds = seedIndices.map((idx) => new THREE.Vector3().fromBufferAttribute(pos, idx));
+
+    for (let i = 0; i < pos.count; i++) {
+      const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+      const coincident = seeds.some((s) => s.distanceToSquared(v) < 1e-10);
+      if (coincident) all.add(i);
+    }
+
+    return [...all];
   }
 
   _getTriangleCount(geo) {
@@ -615,6 +964,10 @@ export class SelectionManager {
   dispose() {
     this.clearSubSelection();
     this._detachGizmo();
+    this._domElement.removeEventListener('pointerdown', this._onPointerDown);
+    window.removeEventListener('pointermove', this._onPointerMove);
+    this._domElement.removeEventListener('pointerup', this._onPointerUp);
+    window.removeEventListener('pointerup', this._onPointerUp);
     this.scene.remove(this.transformControls);
     this.transformControls.dispose();
   }

@@ -21,7 +21,11 @@ export class ObjectManager {
     this.objects = new Map();
 
     // Counters for auto-naming
-    this._counter = { box: 0, sphere: 0, cylinder: 0, plane: 0 };
+    this._counter = {
+      box: 0, sphere: 0, cylinder: 0, plane: 0,
+      dog: 0, cat: 0, car: 0, house: 0, tree: 0, chair: 0, table: 0, robot: 0, human: 0,
+      airplane: 0, boat: 0, building: 0, cloud: 0, streetlight: 0,
+    };
   }
 
   /* ── Geometry factories ───────────────────────────────────── */
@@ -42,6 +46,7 @@ export class ObjectManager {
       box: 'Cube', sphere: 'Sphere', cylinder: 'Cylinder', plane: 'Plane',
       dog: 'Dog', cat: 'Cat', car: 'Car', house: 'House',
       tree: 'Tree', chair: 'Chair', table: 'Table', robot: 'Robot', human: 'Human',
+      airplane: 'Airplane', boat: 'Boat', building: 'Building', cloud: 'Cloud', streetlight: 'Streetlight',
     };
     const n = this._counter[type];
     const label = labels[type] || (type.charAt(0).toUpperCase() + type.slice(1));
@@ -254,7 +259,11 @@ export class ObjectManager {
     const ids = [...this.objects.keys()];
     ids.forEach(id => this.delete(id));
     // Reset counters
-    this._counter = { box: 0, sphere: 0, cylinder: 0, plane: 0 };
+    this._counter = {
+      box: 0, sphere: 0, cylinder: 0, plane: 0,
+      dog: 0, cat: 0, car: 0, house: 0, tree: 0, chair: 0, table: 0, robot: 0, human: 0,
+      airplane: 0, boat: 0, building: 0, cloud: 0, streetlight: 0,
+    };
   }
 
   _cloneObject3D(object) {

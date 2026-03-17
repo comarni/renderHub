@@ -16,6 +16,8 @@ import { ObjectManager }    from './objects/ObjectManager.js';
 
 import { CommandParser }    from './commands/CommandParser.js';
 import { STLExporter }      from './export/STLExporter.js';
+import { HTMLEmbeddedExporter } from './export/HTMLEmbeddedExporter.js';
+import { AtmosphericStoryExporter } from './export/AtmosphericStoryExporter.js';
 import { ModelImporter }    from './io/ModelImporter.js';
 
 import { Terminal }         from './ui/Terminal.js';
@@ -23,12 +25,16 @@ import { PropertiesPanel }  from './ui/PropertiesPanel.js';
 import { SceneHierarchy }   from './ui/SceneHierarchy.js';
 import { ProjectLibrary }   from './ui/ProjectLibrary.js';
 import { ViewportOverlay }  from './ui/ViewportOverlay.js';
+import { EnvironmentManager } from './world/EnvironmentManager.js';
+import { ScenarioDirector } from './world/ScenarioDirector.js';
 
 /* ══ 1. Wait for DOM ══════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', () => {
   init();
 });
+
+let _previewObjectUrl = null;
 
 function init() {
   const canvasContainer = document.getElementById('viewport-canvas');
@@ -66,6 +72,8 @@ function init() {
   /* ══ 5. Export ═════════════════════════════════════════════ */
 
   const stlExporter = new STLExporter(sceneManager.scene, objectManager);
+  const htmlExporter = new HTMLEmbeddedExporter(sceneManager.scene, objectManager, materialManager);
+  const atmosphericExporter = new AtmosphericStoryExporter(sceneManager.scene, objectManager, materialManager);
 
   /* ══ 6. Command Parser ═════════════════════════════════════ */
 
@@ -76,6 +84,18 @@ function init() {
     cameraManager,
     stlExporter
   );
+
+  const environmentManager = new EnvironmentManager(sceneManager.scene, cameraManager, grid);
+  const scenarioDirector = new ScenarioDirector(
+    objectManager,
+    materialManager,
+    selectionManager,
+    environmentManager,
+    cameraManager
+  );
+  commandParser.setEnvironmentManager(environmentManager);
+  commandParser.setScenarioDirector(scenarioDirector);
+  environmentManager.applyPreset('studio');
 
   /* ══ 6b. Save / Load toolbar buttons ══════════════════════ */
 
@@ -103,8 +123,34 @@ function init() {
   const modelImporter = new ModelImporter(objectManager);
   commandParser.setImporter(modelImporter);
 
+  commandParser.setAtmosphericExporter(atmosphericExporter);
   const btnImport = document.getElementById('btn-import');
   if (btnImport) btnImport.addEventListener('click', () => modelImporter.openPicker());
+
+  /* ══ 6c. Export buttons (STL + HTML) ════════════════════════ */
+
+  const btnExportSTL = document.getElementById('btn-export-stl');
+  const btnExportHTML = document.getElementById('btn-export-html');
+
+  if (btnExportSTL) {
+    btnExportSTL.addEventListener('click', () => {
+      const filename = prompt('Export STL as:', 'scene') ?? 'scene';
+      if (filename) {
+        const result = stlExporter.export(filename);
+        showToast(result.message, result.success ? 'info' : 'warn');
+      }
+    });
+  }
+
+  if (btnExportHTML) {
+    btnExportHTML.addEventListener('click', () => {
+      const filename = prompt('Export HTML as:', 'scene-export') ?? 'scene-export';
+      if (filename) {
+        const result = htmlExporter.export(filename);
+        showToast(result.message, result.success ? 'info' : 'warn');
+      }
+    });
+  }
 
   /* ══ 6d. Undo / Redo buttons + Ctrl+Z/Y (Sprint 1.3) ══════ */
 
@@ -161,14 +207,23 @@ function init() {
   });
   const viewportOverlay  = new ViewportOverlay(commandParser, objectManager, selectionManager);
   setupMobileLayout();
+  setupExportPreview();
 
   /* ══ 8. Render Loop ════════════════════════════════════════ */
 
   function animate() {
     requestAnimationFrame(animate);
 
+    const now = performance.now() * 0.001;
+    const delta = Math.min(0.033, now - (animate._prevNow || now));
+    animate._prevNow = now;
+
     // Update OrbitControls (required for damping to work)
     cameraManager.update();
+
+    // Update dynamic world ambience
+    environmentManager.update(delta, now);
+    scenarioDirector.update(delta, now);
 
     // Render
     renderer.render(sceneManager.scene, cameraManager.activeCamera);
@@ -202,6 +257,49 @@ function showToast(message, type = 'info', duration = 2400) {
     toast.classList.remove('toast-visible');
     toast.addEventListener('transitionend', () => toast.remove(), { once: true });
   }, duration);
+}
+
+function setupExportPreview() {
+  const preview = document.getElementById('export-preview');
+  const frame = document.getElementById('export-preview-frame');
+  const title = document.getElementById('export-preview-title');
+  const btnClose = document.getElementById('btn-preview-close');
+  const btnOpenTab = document.getElementById('btn-preview-open-tab');
+
+  if (!preview || !frame || !title || !btnClose || !btnOpenTab) return;
+
+  const cleanupUrl = () => {
+    if (_previewObjectUrl) {
+      URL.revokeObjectURL(_previewObjectUrl);
+      _previewObjectUrl = null;
+    }
+  };
+
+  const closePreview = () => {
+    preview.classList.add('hidden');
+    frame.removeAttribute('srcdoc');
+    cleanupUrl();
+  };
+
+  btnClose.addEventListener('click', closePreview);
+  btnOpenTab.addEventListener('click', () => {
+    if (_previewObjectUrl) window.open(_previewObjectUrl, '_blank', 'noopener,noreferrer');
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !preview.classList.contains('hidden')) {
+      closePreview();
+    }
+  });
+
+  EventBus.on('preview:open', ({ html, title: previewTitle }) => {
+    cleanupUrl();
+    _previewObjectUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    title.textContent = previewTitle || 'Atmos Preview';
+    frame.srcdoc = html;
+    preview.classList.remove('hidden');
+    showToast('Preview cargado en RenderHub', 'info');
+  });
 }
 
 function setupMobileLayout() {

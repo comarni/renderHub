@@ -1,0 +1,287 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    ATMOSPHERIC STORY VIEWER                                 ║
+║             Generador de Páginas 3D Inmersivas Tipo Atmos.leeroy.ca        ║
+║                                                                              ║
+║  Crea experiencias web narrativas interactivas en SEGUNDOS desde PowerShell ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 OPCIÓN 1: COMANDO ULTRA-RÁPIDO (Recomendado)
+
+Abre PowerShell y copia-pega esto:
+
+───────────────────────────────────────────────────────────────────────────────
+
+.\create-story-viewer.ps1 -projectName "mi-historia" -scenes 5 -openBrowser
+
+───────────────────────────────────────────────────────────────────────────────
+
+Parámetros:
+  • -projectName "nombre"  ← Tu proyecto (default: "atmospheric-story")
+  • -scenes 5              ← Número de escenas (default: 5, máx: 10)
+  • -openBrowser           ← Abre automáticamente en navegador
+
+
+Ejemplos:
+
+  # Historia corta (3 escenas)
+  .\create-story-viewer.ps1 -projectName "mi-viaje" -scenes 3 -openBrowser
+
+  # Narrativa épica (10 escenas)
+  .\create-story-viewer.ps1 -projectName "historia-épica" -scenes 10 -openBrowser
+
+  # Sin abrir navegador (abres manualmente después)
+  .\create-story-viewer.ps1 -projectName "proyecto-x" -scenes 7
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎮 OPCIÓN 2: MODO INTERACTIVO (Paso a Paso)
+
+Ejecuta esto:
+
+───────────────────────────────────────────────────────────────────────────────
+
+.\create-story-viewer-interactive.ps1
+
+───────────────────────────────────────────────────────────────────────────────
+
+Te pedirá:
+  1. Nombre del proyecto
+  2. Número de escenas
+  3. Para cada escena:
+     - Título (ej: "El Comienzo")
+     - Descripción (la historia)
+
+Resultado: Proyecto completamente personalizado, listo en navegador
+
+
+Ejemplo de entrada:
+
+  Nombre: "El Viaje del Astronauta"
+  Escenas: 3
+  
+  Escena 1 - Título: "Despegue"
+  Escena 1 - Descripción: "Abandonamos la Tierra tras mil años..."
+  
+  Escena 2 - Título: "En el Espacio"
+  Escena 2 - Descripción: "La vastedad infinita nos rodea..."
+  
+  Escena 3 - Título: "Llegada"
+  Escena 3 - Descripción: "Hemos encontrado nuestro nuevo hogar..."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚡ OPCIÓN 3: FUNCIÓN POWERSHELL (Ultra Simple)
+
+Copia-pega en PowerShell una sola vez:
+
+───────────────────────────────────────────────────────────────────────────────
+
+function New-AtmosphericStory {
+    param([string]$Name, [int]$Scenes = 5)
+    if (!$Name) { $Name = Read-Host "Nombre" }
+    
+    $path = New-Item -ItemType Directory $Name -Force | % FullName
+    $html = '<!DOCTYPE html>...' # [ver archivo quick-atmospheric-story.ps1]
+    Set-Content -Path "$path\index.html" -Value $html -Encoding UTF8
+    Write-Host "✨ Creado: $path" -ForegroundColor Green
+    Start-Process "$path\index.html"
+}
+
+# Luego usa:
+New-AtmosphericStory -Name "mi-historia" -Scenes 5
+
+───────────────────────────────────────────────────────────────────────────────
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 QUÉ SE GENERA
+
+Cada proyecto incluye:
+
+  📁 {nombre-proyecto}/
+     ├── index.html         ← HTML5 completo, listo para abrir
+     ├── README.md          ← Documentación del proyecto
+     └── data.json          ← (Si usas modo interactivo)
+
+  ✨ Características automáticas:
+     ✓ Escena 3D con Three.js
+     ✓ Planos flotantes con contenido
+     ✓ Navegación suave con rueda del ratón
+     ✓ Panel de control (escena actual, progreso)
+     ✓ Iluminación cinemática (cyan, magenta)
+     ✓ Animaciones sutiles rotacionales
+     ✓ Diseño responsive
+     ✓ Compatible con navegadores modernos
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎮 CONTROLES EN LA EXPERIENCIA
+
+  Rueda del Ratón       → Navega entre escenas
+  Flechas ↑ ↓           → Navega alternativa
+  Scroll               → Indicador de progreso visual
+
+Panel de Control (superior derecha):
+  - Escena actual / Total
+  - Barra de progreso
+  - Información de navegación
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 TROUBLESHOOTING
+
+❌ "No puedo ejecutar el script"
+✓ En PowerShell, ejecuta primero:
+    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
+
+❌ "El navegador no abre automáticamente"
+✓ Abre manualmente el archivo:
+    cd tu-proyecto
+    start index.html
+
+❌ "Quiero editar después"
+✓ Edita el archivo index.html con cualquier editor de texto:
+    - Busca colores: #00d4ff (cyan), #0a0e27 (fondo)
+    - Edita contenido en la sección <h2> y <p> de cada escena
+    - Ajusta velocidades: rotationSpeed, duration, etc.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 ESPECIFICACIONES TÉCNICAS
+
+Tamaño de archivo:     150-200 KB (incluyendo Three.js)
+Tiempo generación:     < 5 segundos
+Motor 3D:             Three.js r128
+Formato salida:       HTML5 puro
+Dependencias:         Solo Three.js (desde CDN)
+Navegadores:          Chrome 90+, Firefox 87+, Safari 14+, Edge 90+
+Responsivo:           Sí (adaptable a móvil)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 CASOS DE USO
+
+📚 Narrativas Interactivas
+   • Historias no lineales
+   • Experiencias educativas
+   • Documentales inmersivos
+
+🎬 Portafolio Creativo
+   • Muestras de diseño 3D
+   • Timeline de proyectos
+   • Visualización artística
+
+🏢 Aplicaciones Comerciales
+   • Product launches inmersivos
+   • Presentaciones ejecutivas
+   • Tours virtuales
+
+🎮 Entretenimiento
+   • Juegos narrativos
+   • Visualización de música
+   • Instalaciones digitales
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 DOCUMENTACIÓN COMPLETA
+
+Para documentación detallada con ejemplos:
+  → Ver: ATMOSPHERIC-STORIES-GUIDE.md
+
+Para guía de HTMLEmbeddedExporter de Three.js/RenderHub:
+  → Ver: HTML-EXPORT-GUIDE.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ EJEMPLOS LISTOS PARA COPIAR-PEGAR
+
+1️⃣  Crear una historia de 5 escenas llamada "viaje-estelar":
+
+    .\create-story-viewer.ps1 -projectName "viaje-estelar" -scenes 5 -openBrowser
+
+
+2️⃣  Crear historia épica interactivo con 8 escenas:
+
+    .\create-story-viewer-interactive.ps1
+    → Ingresar: "historia-épica", 8, luego contenidos
+
+
+3️⃣  Crear rápidamente con función:
+
+    New-AtmosphericStory -Name "proyecto-x" -Scenes 3
+
+
+4️⃣  Usar con RenderHub - Exportar escena 3D + Usar aquí:
+
+    # En RenderHub: Clic "Export HTML" para obtener escena 3D
+    # Luego aquí puedes insertarla en los planos
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎨 PERSONALIZACIÓN POST-GENERACIÓN
+
+Después de generar, puedes editar index.html para:
+
+Colores:
+  #00d4ff  → Cyan (cambiar a tu color principal)
+  #0a0e27  → Fondo oscuro
+  #ff00ff  → Magenta (luz rim)
+  #4488ff  → Azul (luz ambiental)
+
+Contenido:
+  Busca <h2> y <p> en cada escena
+  Reemplaza títulos y descripciones
+
+Animaciones:
+  rotationSpeed: 0.0005  → Velocidad de rotación
+  duration: 2000         → Tiempo transición (ms)
+  emissiveIntensity: 0.1 → Brillo propio de planos
+
+Velocidad interacción:
+  En la sección "INPUT HANDLING" del JavaScript
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 FLUJO TÍPICO (5 MINUTOS)
+
+ 1. Abre PowerShell
+ 2. Navega a: cd C:\Users\marko\Desktop\$$$$\renderHub
+ 3. Ejecuta: .\create-story-viewer.ps1 -projectName "mi-proyecto" -scenes 5 -openBrowser
+ 4. Se abre navegador → ¡Listo! Tu experiencia 3D inmersiva
+ 5. (Opcional) Edita index.html para personalizar
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📞 REFERENCIA RÁPIDA
+
+Comando                                    Resultado
+─────────────────────────────────────────────────────────────────────────────
+.\create-story-viewer.ps1 \               Genera automáticamente 5 escenas
+  -projectName "nombre" \    
+  -scenes 5                    
+
+.\create-story-viewer-interactive.ps1     Genera interactivamente con tucontenido
+
+New-AtmosphericStory \                    Función simplificada (ver
+  -Name "nombre" \             quick-atmospheric-story.ps1)
+  -Scenes 5
+
+cd nombre && start index.html              Abrir proyecto generado
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ ¡LISTO PARA CREAR! ✨
+
+Simplemente ejecuta:
+
+  .\create-story-viewer.ps1 -projectName "tu-historia" -scenes 5 -openBrowser
+
+Y en 5 segundos tendrás una página inmersiva tipo Atmos.leeroy.ca lista.
+
+Inspired by: https://atmos.leeroy.ca/
+Created with: PowerShell + Three.js + Pure HTML5
+
+═════════════════════════════════════════════════════════════════════════════

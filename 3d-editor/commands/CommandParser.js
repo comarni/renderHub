@@ -51,8 +51,18 @@ Available commands:
   focus                 — focus camera on selected
   reset                 — clear all objects
   export [file.stl]     — export scene as STL
+  exportar [name] [scenes] — export atmospheric story page (default: 5 scenes)
+  scenario <name> [shuffle] — cityTraffic|airplaneSky|harborBoat|forestWildlife|robotFactory
+  shuffle [name]        — randomize a scenario or pick one automatically
+  Examples:
+    crea una ciudad con coches moviendose
+    crea un avion que vuela por el aire
+    crea un barco que navega por el puerto
   view <mode>           — view top | front | right | perspective
   wireframe             — toggle wireframe
+  environment list      — list available ambience presets
+  environment <preset>  — studio|sky|meadow|ocean|space
+  environment prompt <text> — map prompt to ambience preset
   undo / redo
   help`.trim();
 
@@ -85,6 +95,9 @@ export class CommandParser {
 
     // ModelImporter set externally via setImporter()
     this._importer = null;
+    this._atmosphericExporter = null;
+    this._scenarioDirector = null;
+    this._environment = null;
 
     this._history   = [];  // undo stack (100 entries)
     this._redoStack = [];  // redo stack
@@ -92,6 +105,19 @@ export class CommandParser {
   /** Wire the ModelImporter after construction. */
   setImporter(importer) {
     this._importer = importer;
+  }
+  /** Wire the AtmosphericStoryExporter after construction. */
+  setAtmosphericExporter(exporter) {
+    this._atmosphericExporter = exporter;
+  }
+
+  /** Wire the scenario director after construction. */
+  setScenarioDirector(scenarioDirector) {
+    this._scenarioDirector = scenarioDirector;
+  }
+
+  setEnvironmentManager(environmentManager) {
+    this._environment = environmentManager;
   }
 
   /** True if there are undo steps available. */
@@ -151,8 +177,13 @@ export class CommandParser {
         case 'focus':      return this._focus();
         case 'reset':      return this._reset();
         case 'export':     return this._export(args);
+        case 'exportar':   return this._exportar(args);
+        case 'scenario':   return this._scenario(args);
+        case 'shuffle':    return this._shuffle(args);
         case 'view':       return this._view(args);
         case 'wireframe':  return this._wireframe();
+        case 'environment': return this._environmentCmd(args);
+        case 'env':        return this._environmentCmd(args);
         case 'undo':       return this.undo();
         case 'redo':       return this.redo();
         case 'help':       return { success: true, message: HELP_TEXT };
@@ -207,10 +238,24 @@ export class CommandParser {
     const parsed = this._nlp.parse(text);
     if (!parsed) {
       const supported = this._nlp.supportedObjects.join(', ');
+      const supportedScenarios = this._scenarioDirector
+        ? this._scenarioDirector.supportedScenarios.join(', ')
+        : 'cityTraffic, airplaneSky, harborBoat, forestWildlife, robotFactory';
       return {
         success: false,
-        message: `I don't recognise an object in: "${text}"\nSupported: ${supported}`,
+        message: `I don't recognise an object or scenario in: "${text}"\nObjects: ${supported}\nScenarios: ${supportedScenarios}`,
       };
+    }
+
+    if (parsed.kind === 'scene') {
+      if (!this._scenarioDirector) {
+        return { success: false, message: 'Scenario director is not available.' };
+      }
+      return this._scenarioDirector.createScenario(parsed.scenario, {
+        shuffle: parsed.shuffle,
+        density: parsed.count,
+        prompt: text,
+      });
     }
 
     const { type, scale, color, count } = parsed;
@@ -528,6 +573,25 @@ export class CommandParser {
     return this.exp.export(filename);
   }
 
+  _scenario(args) {
+    if (!this._scenarioDirector) {
+      return { success: false, message: 'Scenario director is not available.' };
+    }
+    const scenarioName = args[0] || 'shuffle';
+    const shuffle = args.some(arg => String(arg).toLowerCase() === 'shuffle');
+    const densityArg = parseInt(args.find(arg => /^\d+$/.test(arg)), 10) || 1;
+    return this._scenarioDirector.createScenario(scenarioName, { shuffle, density: densityArg });
+  }
+
+  _shuffle(args) {
+    if (!this._scenarioDirector) {
+      return { success: false, message: 'Scenario director is not available.' };
+    }
+    const scenarioName = args[0] || 'shuffle';
+    const densityArg = parseInt(args.find(arg => /^\d+$/.test(arg)), 10) || 2;
+    return this._scenarioDirector.createScenario(scenarioName, { shuffle: true, density: densityArg });
+  }
+
   _view(args) {
     const mode = (args[0] || '').toLowerCase();
     const valid = ['top', 'front', 'right', 'perspective', 'persp'];
@@ -545,6 +609,34 @@ export class CommandParser {
   _wireframe() {
     if (this.onWireframe) this.onWireframe();
     return { success: true, message: 'Wireframe toggled' };
+  }
+
+  _environmentCmd(args) {
+    if (!this._environment) {
+      return { success: false, message: 'Environment system is not available.' };
+    }
+    if (!args.length) {
+      return { success: false, message: 'Usage: environment <list|preset|prompt <text>>' };
+    }
+
+    const sub = (args[0] || '').toLowerCase();
+    if (sub === 'list') {
+      return {
+        success: true,
+        message: `Environments: ${this._environment.listPresets().join(', ')}`,
+      };
+    }
+
+    if (sub === 'prompt') {
+      const text = args.slice(1).join(' ').trim();
+      const result = this._environment.generateFromPrompt(text);
+      if (result.success) EventBus.emit('state:changed', { type: 'scene' });
+      return result;
+    }
+
+    const result = this._environment.applyPreset(sub);
+    if (result.success) EventBus.emit('state:changed', { type: 'scene' });
+    return result;
   }
 
   _translate(args) {
@@ -799,5 +891,14 @@ export class CommandParser {
     const y = parseFloat(args[1]) || 0;
     const z = parseFloat(args[2]) || 0;
     return [x, y, z];
+  }
+
+  _exportar(args) {
+    if (!this._atmosphericExporter) {
+      return { success: false, message: 'Atmospheric exporter not available.' };
+    }
+    const projectName = args[0] || 'atmospheric-story';
+    const numScenes = parseInt(args[1], 10) || 5;
+    return this._atmosphericExporter.export(projectName, numScenes);
   }
 }

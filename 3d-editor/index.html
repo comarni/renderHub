@@ -29,6 +29,7 @@
       <button id="btn-save" class="btn-header btn-save" title="Save scene as .hub file">&#128190; Save</button>
       <button id="btn-load" class="btn-header btn-load" title="Load .hub scene file">&#128194; Load</button>
       <button id="btn-export-stl" class="btn-header btn-accent">Export STL</button>
+      <button id="btn-export-html" class="btn-header btn-accent" title="Export as interactive HTML">🌐 Export HTML</button>
     </div>
   </header>
 
@@ -69,6 +70,20 @@
       <div id="viewport-wrapper">
         <div id="viewport-canvas"></div>
 
+        <div id="export-preview" class="hidden" aria-live="polite">
+          <div id="export-preview-bar">
+            <div id="export-preview-meta">
+              <span class="preview-badge">Preview</span>
+              <span id="export-preview-title">Atmos Preview</span>
+            </div>
+            <div id="export-preview-actions">
+              <button id="btn-preview-open-tab" class="btn-tiny" type="button">Open Tab</button>
+              <button id="btn-preview-close" class="btn-tiny" type="button">Close</button>
+            </div>
+          </div>
+          <iframe id="export-preview-frame" title="Atmospheric export preview" sandbox="allow-scripts allow-same-origin"></iframe>
+        </div>
+
         <!-- Overlay (pointer-events:none so mouse passes to canvas) -->
         <div id="viewport-overlay">
 
@@ -86,6 +101,13 @@
             <button class="btn-transform" data-mode="rotate" title="Rotate (R)">Rotate</button>
             <button class="btn-transform" data-mode="scale" title="Scale (S)">Scale</button>
             <button id="btn-space" class="btn-transform btn-space" title="Toggle Local/World space (W)">World</button>
+          </div>
+
+          <div id="subselect-buttons">
+            <button class="btn-subselect active" data-pick="object" title="Object select (1)">Obj</button>
+            <button class="btn-subselect" data-pick="face" title="Face select (2)">Face</button>
+            <button class="btn-subselect" data-pick="edge" title="Edge select (3)">Edge</button>
+            <button class="btn-subselect" data-pick="vertex" title="Vertex select (4)">Vert</button>
           </div>
 
           <!-- Wireframe toggle -->
@@ -114,6 +136,10 @@
               <div><kbd>R</kbd> Rotate mode</div>
               <div><kbd>S</kbd> Scale mode</div>
               <div><kbd>W</kbd> Local/World</div>
+              <div><kbd>1</kbd> Cursor object mode</div>
+              <div><kbd>2</kbd> Cursor face mode</div>
+              <div><kbd>3</kbd> Cursor edge mode</div>
+              <div><kbd>4</kbd> Cursor vertex mode</div>
               <div><kbd>Shift</kbd>+<kbd>D</kbd> Duplicate</div>
               <div><kbd>Del</kbd> Delete</div>
               <div><kbd>Ctrl</kbd>+<kbd>Z</kbd> Undo</div>
@@ -121,10 +147,11 @@
               <div><kbd>Shift</kbd>+<kbd>1</kbd> Select face 0</div>
               <div><kbd>Shift</kbd>+<kbd>2</kbd> Select edge 0</div>
               <div><kbd>Shift</kbd>+<kbd>3</kbd> Select vertex 0</div>
-              <div><kbd>Shift</kbd>+<kbd>E</kbd> Extrude 0.1</div>
+              <div><kbd>Shift</kbd>+<kbd>E</kbd> Edit mode: extrude drag</div>
               <div><kbd>Shift</kbd>+<kbd>B</kbd> Subdivide x1</div>
               <div><kbd>Shift</kbd>+<kbd>M</kbd> Merge doubles</div>
               <div><kbd>Shift</kbd>+<kbd>N</kbd> Recalc normals</div>
+              <div>Drag with mouse to move selected face/edge/vertex</div>
               <div><kbd>?</kbd> Toggle this panel</div>
             </div>
           </div>

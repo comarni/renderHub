@@ -1,0 +1,60 @@
+COMANDO EXPORTAR - GUÍA RÁPIDA
+═════════════════════════════════════════════════════════════════════
+
+INSTALACIÓN COMPLETADA ✓
+- Función "exportar" agregada a tu perfil de PowerShell
+- Script ubicado en: C:\Users\marko\Desktop\$$$$\renderHub\create-story-viewer.ps1
+
+CÓMO USAR
+═════════════════════════════════════════════════════════════════════
+
+1. OPCIÓN SIMPLE (generación automática):
+   exportar -projectName "mi-historia" -scenes 5 -openBrowser
+
+2. SIN ABRIR NAVEGADOR:
+   exportar -projectName "mi-historiav2" -scenes 3
+
+3. PERSONALIZAR NÚMERO DE ESCENAS:
+   exportar -projectName "aventura" -scenes 8 -openBrowser
+
+PARÁMETROS
+═════════════════════════════════════════════════════════════════════
+
+-projectName (OBLIGATORIO): Nombre del proyecto/carpeta
+-scenes: Número de escenas (1-10, default: 5)
+-openBrowser: Abre automáticamente en navegador
+
+EJEMPLOS
+═════════════════════════════════════════════════════════════════════
+
+exportar -projectName "primeros-pasos" -scenes 3 -openBrowser
+exportar -projectName "historia-completa" -scenes 10 -openBrowser
+exportar -projectName "demo" -scenes 1
+
+SALIDA
+═════════════════════════════════════════════════════════════════════
+
+Cada comando crea:
+- Carpeta: C:\Users\marko\Desktop\$$$$\renderHub\[projectName]\
+- Archivo: index.html (página web interactiva con Three.js)
+
+CARACTERÍSTICAS DEL VISOR
+═════════════════════════════════════════════════════════════════════
+
+✓ Navegación con teclas de dirección (← →)
+✓ Scroll del ratón / rueda del mouse
+✓ Click en planos para irlos seleccionando
+✓ Barra de progreso
+✓ Rotación suave de planos
+✓ Iluminación atmosférica (estilo atmos.leeroy.ca)
+
+NOTA
+═════════════════════════════════════════════════════════════════════
+
+Si es la PRIMERA VEZ que abres PowerShell después de la instalación,
+cierra y vuelve a abrir la terminal para cargar el nuevo perfil.
+
+Si ya tienes PowerShell abierto, ejecuta:
+. $PROFILE
+
+Luego ya podrás usar el comando "exportar" normalmente.

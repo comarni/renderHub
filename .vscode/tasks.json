@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "One Click: Export Portfolio Web",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\export-project.ps1",
+        "-SourcePath",
+        "web-ready",
+        "-OutName",
+        "portfolio-cubo"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

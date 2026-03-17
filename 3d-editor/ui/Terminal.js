@@ -8,7 +8,7 @@ const ALL_COMMANDS = [
   'add', 'select', 'deselect', 'move', 'rotate', 'scale',
   'color', 'material', 'roughness', 'metalness',
   'duplicate', 'delete', 'rename', 'list', 'focus',
-  'reset', 'export', 'view', 'wireframe', 'undo', 'redo', 'help'
+  'reset', 'export', 'exportar', 'scenario', 'shuffle', 'view', 'wireframe', 'undo', 'redo', 'help'
 ];
 
 const COMMAND_HINTS = {
@@ -23,6 +23,9 @@ const COMMAND_HINTS = {
   metalness:'metalness <0-1>',
   rename:   'rename <newname>',
   export:   'export [filename.stl]',
+  exportar: 'exportar [nombre] [escenas]',
+  scenario: 'scenario <cityTraffic|airplaneSky|harborBoat|forestWildlife|robotFactory> [shuffle]',
+  shuffle:  'shuffle [scenario]',
   view:     'view <top|front|right|perspective>',
 };
 

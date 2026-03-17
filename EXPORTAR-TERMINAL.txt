@@ -1,0 +1,76 @@
+COMANDO EXPORTAR EN TERMINAL DE RENDERHUB
+═════════════════════════════════════════════════════════════════════
+
+NUEVO COMANDO AGREGADO ✓
+═════════════════════════════════════════════════════════════════════
+
+Ahora puedes usar el comando "exportar" directamente en la terminal de RenderHub
+para generar páginas web tipo atmos (atmosféricas) con planos flotantes.
+
+SINTAXIS
+═════════════════════════════════════════════════════════════════════
+
+exportar [nombre] [escenas]
+
+Parámetros:
+  nombre    : Nombre del proyecto (default: "atmospheric-story")
+  escenas   : Número de escenas (1-10, default: 5)
+
+EJEMPLOS EN LA TERMINAL
+═════════════════════════════════════════════════════════════════════
+
+1. Generar con valores por defecto (5 escenas):
+   exportar
+
+2. Generar historia con nombre personalizado:
+   exportar mi-historia
+
+3. Generar con nombre y 8 escenas:
+   exportar aventura-epica 8
+
+4. Generar con nombre y 3 escenas:
+   exportar cuento 3
+
+CARACTERÍSTICAS DEL ARCHIVO GENERADO
+═════════════════════════════════════════════════════════════════════
+
+✓ Página web HTML completa (standalone, sin dependencias externas)
+✓ Three.js r128 con iluminación atmosférica
+✓ Planos flotantes con rotación suave
+✓ Navegación:
+  - Teclas de dirección: Arrow Left/Right
+  - Barra espaciadora: Siguiente escena
+  - Scroll del ratón: Navegar entre escenas
+  - Click en planos: Seleccionar escena
+✓ Barra de progreso en tiempo real
+✓ Responsive en cualquier dispositivo
+
+UBICACIÓN DEL ARCHIVO GENERADO
+═════════════════════════════════════════════════════════════════════
+
+El archivo se descarga automáticamente como:
+[nombre].html
+
+Ejemplo: Si ejecutas "exportar mi-historia", descargará:
+         mi-historia.html
+
+Puedes abrir este archivo directamente en cualquier navegador.
+
+INTEGRACIÓN CON BUTTON EN UI
+═════════════════════════════════════════════════════════════════════
+
+Ya hay un botón "🌐 Export HTML" en la barra de herramientas que 
+exporta escenas embebidas. El comando "exportar" genera un tipo 
+diferente de visualización (estilo atmos.leeroy.ca).
+
+FLUJO DE TRABAJO COMPLETO
+═════════════════════════════════════════════════════════════════════
+
+1. Abre RenderHub (/renderHub/3d-editor/index.html)
+2. Ve a la terminal (bot abajo)
+3. Escribe: exportar prueba 5
+4. Se descargará: prueba.html
+5. Abre prueba.html en tu navegador
+6. Navega con teclas y scroll
+
+¡Listo! Tienes tu propia experiencia inmersiva tipo atmos.

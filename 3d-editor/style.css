@@ -466,6 +466,62 @@ html, body {
   height: 100% !important;
 }
 
+#export-preview {
+  position: absolute;
+  inset: 14px;
+  z-index: 8;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid rgba(0, 212, 255, 0.32);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(10, 14, 39, 0.92);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+#export-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(90deg, rgba(0, 212, 255, 0.18), rgba(255, 0, 255, 0.08));
+  border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+#export-preview-meta,
+#export-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-badge {
+  padding: 2px 8px;
+  border: 1px solid rgba(0, 212, 255, 0.4);
+  border-radius: 999px;
+  color: #7fe7ff;
+  background: rgba(0, 212, 255, 0.12);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#export-preview-title {
+  color: #dcecff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#export-preview-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0a0e27;
+}
+
 /* Overlay: pointer-events:none so mouse passes through to canvas */
 #viewport-overlay {
   position: absolute;
@@ -513,6 +569,16 @@ html, body {
   pointer-events: all;
 }
 
+#subselect-buttons {
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  pointer-events: all;
+}
+
 .btn-transform {
   background: rgba(30, 30, 30, 0.75);
   backdrop-filter: blur(4px);
@@ -530,6 +596,30 @@ html, body {
   background: rgba(232, 125, 13, 0.2);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.btn-subselect {
+  background: rgba(24, 24, 24, 0.75);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 10px;
+  font-family: var(--font-ui);
+  transition: all 0.1s;
+}
+
+.btn-subselect:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.btn-subselect.active {
+  background: rgba(80, 160, 255, 0.2);
+  border-color: rgba(80, 160, 255, 0.75);
+  color: #9fd1ff;
 }
 
 /* Wireframe toggle — top right */

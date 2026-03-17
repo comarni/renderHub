@@ -25,6 +25,11 @@ const OBJECTS_RAW = {
   silla: 'chair', sillas: 'chair', butaca: 'chair', butacas: 'chair',
   mesa: 'table', mesas: 'table', escritorio: 'table', escritorios: 'table',
   robot: 'robot', robots: 'robot', androide: 'robot', androides: 'robot',
+  avion: 'airplane', aviones: 'airplane', jet: 'airplane', jets: 'airplane',
+  barco: 'boat', barcos: 'boat', bote: 'boat', botes: 'boat', navio: 'boat', navios: 'boat',
+  edificio: 'building', edificios: 'building', torre: 'building', torres: 'building', rascacielos: 'building',
+  nube: 'cloud', nubes: 'cloud',
+  farola: 'streetlight', farolas: 'streetlight', poste: 'streetlight', postes: 'streetlight',
   persona: 'human', personas: 'human',
   humano: 'human', humanos: 'human', humana: 'human', humanas: 'human',
   hombre: 'human', mujer: 'human', chico: 'human', chica: 'human',
@@ -37,8 +42,32 @@ const OBJECTS_RAW = {
   chair: 'chair', chairs: 'chair',
   table: 'table', tables: 'table', desk: 'table',
   robot: 'robot', robots: 'robot', android: 'robot', bot: 'robot',
+  airplane: 'airplane', plane: 'airplane', jet: 'airplane', aircraft: 'airplane',
+  boat: 'boat', boats: 'boat', ship: 'boat', ships: 'boat', vessel: 'boat',
+  building: 'building', buildings: 'building', tower: 'building', towers: 'building', skyscraper: 'building', skyscrapers: 'building',
+  cloud: 'cloud', clouds: 'cloud',
+  streetlight: 'streetlight', streetlights: 'streetlight', lamp: 'streetlight', lamps: 'streetlight',
   human: 'human', humans: 'human', person: 'human', people: 'human',
   man: 'human', woman: 'human', figure: 'human',
+};
+
+const SCENARIOS_RAW = {
+  ciudad: 'cityTraffic', ciudades: 'cityTraffic', metropolis: 'cityTraffic', metropoli: 'cityTraffic', trafico: 'cityTraffic', traffic: 'cityTraffic',
+  avion: 'airplaneSky', aviones: 'airplaneSky', vuelo: 'airplaneSky', volando: 'airplaneSky', airshow: 'airplaneSky', aeropuerto: 'airplaneSky', airport: 'airplaneSky',
+  barco: 'harborBoat', barcos: 'harborBoat', puerto: 'harborBoat', puertos: 'harborBoat', harbor: 'harborBoat', harbour: 'harborBoat', shipyard: 'harborBoat',
+  bosque: 'forestWildlife', forest: 'forestWildlife', naturaleza: 'forestWildlife', nature: 'forestWildlife', selva: 'forestWildlife',
+  fabrica: 'robotFactory', factory: 'robotFactory', industrial: 'robotFactory', industria: 'robotFactory', robots: 'robotFactory', robotica: 'robotFactory',
+};
+
+const SCENE_HINTS_RAW = {
+  moviendose: true, moviendo: true, movimiento: true, traffic: true, trafico: true,
+  vuela: true, volando: true, aire: true, cielo: true, fly: true, flying: true,
+  navega: true, navegando: true, mar: true, ocean: true, sea: true, sailing: true,
+  entorno: true, escenario: true, scene: true, world: true,
+};
+
+const SHUFFLE_TOKENS_RAW = {
+  shuffle: true, aleatorio: true, azar: true, random: true, mezcla: true,
 };
 
 /** Maps word → scale multiplier */
@@ -99,6 +128,9 @@ function buildNorm(raw) {
 const OBJECTS = buildNorm(OBJECTS_RAW);
 const SIZES   = buildNorm(SIZES_RAW);
 const COLORS  = buildNorm(COLORS_RAW);
+const SCENARIOS = buildNorm(SCENARIOS_RAW);
+const SCENE_HINTS = buildNorm(SCENE_HINTS_RAW);
+const SHUFFLE_TOKENS = buildNorm(SHUFFLE_TOKENS_RAW);
 
 /* ── NLPParser class ────────────────────────────────────────── */
 
@@ -107,7 +139,7 @@ export class NLPParser {
    * Parse free-form text in Spanish or English.
    *
    * @param {string} text
-   * @returns {{ type: string, scale: number, color: string|null, count: number } | null}
+  * @returns {{ kind: 'object', type: string, scale: number, color: string|null, count: number } | { kind: 'scene', scenario: string, shuffle: boolean, count: number } | null}
    *   Returns null if no known object type is found.
    */
   parse(text) {
@@ -124,19 +156,52 @@ export class NLPParser {
     let scale = 1.0;
     let color = null;
     let count = 1;
+    let scenario = null;
+    let hasSceneHint = false;
+    let shuffle = false;
 
     for (const word of words) {
       if (!type && OBJECTS[word])           type  = OBJECTS[word];
+      if (!scenario && SCENARIOS[word])     scenario = SCENARIOS[word];
       if (SIZES[word]   !== undefined)      scale = SIZES[word];
       if (COLORS[word])                     color = COLORS[word];
+      if (SCENE_HINTS[word])                hasSceneHint = true;
+      if (SHUFFLE_TOKENS[word])             shuffle = true;
       if (NUMBERS_ES[word])                 count = NUMBERS_ES[word];
       const asInt = parseInt(word, 10);
-      if (!isNaN(asInt) && asInt >= 1 && asInt <= 20) count = asInt;
+      if (!isNaN(asInt) && asInt >= 1 && asInt <= 120) count = asInt;
+    }
+
+    if (scenario && (hasSceneHint || scenario === 'cityTraffic' || shuffle)) {
+      return {
+        kind: 'scene',
+        scenario,
+        shuffle,
+        count: Math.max(1, Math.min(count, 3)),
+      };
+    }
+
+    if (shuffle && !type && !scenario) {
+      return {
+        kind: 'scene',
+        scenario: 'shuffle',
+        shuffle: true,
+        count: Math.max(1, Math.min(count, 3)),
+      };
+    }
+
+    if (scenario && !type) {
+      return {
+        kind: 'scene',
+        scenario,
+        shuffle,
+        count: Math.max(1, Math.min(count, 3)),
+      };
     }
 
     if (!type) return null;
 
-    return { type, scale, color, count: Math.max(1, Math.min(count, 10)) };
+    return { kind: 'object', type, scale, color, count: Math.max(1, Math.min(count, 20)) };
   }
 
   /** List of all supported object types. */

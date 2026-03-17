@@ -460,6 +460,110 @@ function makeHuman(mainColor = '#f5c5a3') {
   return g;
 }
 
+function makeAirplane(mainColor = '#f4f6fb') {
+  const body = mainColor;
+  const accent = '#ff6b6b';
+  const glass = '#87c9ff';
+  const metal = '#c8d0dc';
+  const g = new THREE.Group();
+
+  g.add(mkCyl(0.22, 0.28, 2.5, 0, 0.72, 0, body, 0.34, 0.28, 18));
+  const nose = mkCone(0.22, 0.55, 18, 1.52, 0.72, 0, body, 0.28);
+  nose.rotation.z = -Math.PI / 2;
+  g.add(nose);
+
+  const tailCone = mkCone(0.20, 0.45, 18, -1.45, 0.72, 0, body, 0.28);
+  tailCone.rotation.z = Math.PI / 2;
+  g.add(tailCone);
+
+  g.add(mkBox(1.65, 0.08, 0.72, 0.12, 0.82, 0, body, 0.35, 0.18));
+  g.add(mkBox(0.70, 0.06, 0.34, -1.08, 1.08, 0, body, 0.35, 0.18));
+
+  const fin = mkBox(0.18, 0.52, 0.08, -1.22, 1.18, 0, accent, 0.42, 0.1);
+  g.add(fin);
+
+  g.add(mkBox(0.42, 0.18, 0.30, 0.58, 0.92, 0, glass, 0.08, 0.1, { transparent: true, opacity: 0.72 }));
+
+  [0.7, -0.7].forEach((z) => {
+    const engine = mkCyl(0.10, 0.12, 0.28, 0.18, 0.58, z * 0.34, metal, 0.45, 0.45, 16);
+    engine.rotation.z = Math.PI / 2;
+    g.add(engine);
+  });
+
+  return g;
+}
+
+function makeBoat(mainColor = '#f4a261') {
+  const hull = mainColor;
+  const deck = '#f2e9d8';
+  const mast = '#7a5230';
+  const sail = '#f8fbff';
+  const g = new THREE.Group();
+
+  g.add(mkBox(1.9, 0.28, 0.72, 0, 0.22, 0, hull, 0.72, 0.08));
+  g.add(mkBox(1.4, 0.22, 0.58, 0, 0.42, 0, deck, 0.82, 0.02));
+  g.add(mkBox(0.52, 0.36, 0.46, -0.18, 0.68, 0, '#ffffff', 0.52, 0.06));
+  g.add(mkBox(0.10, 1.25, 0.10, 0.28, 1.00, 0, mast, 0.88, 0.02));
+
+  const sailMesh = new THREE.Mesh(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0.28, 1.58, 0),
+      new THREE.Vector3(0.28, 0.82, 0),
+      new THREE.Vector3(0.98, 1.12, 0),
+    ]),
+    mat(sail, 0.95, 0.01, { side: THREE.DoubleSide })
+  );
+  sailMesh.geometry.setIndex([0, 1, 2]);
+  sailMesh.geometry.computeVertexNormals();
+  g.add(sailMesh);
+
+  return g;
+}
+
+function makeBuilding(mainColor = '#778090') {
+  const g = new THREE.Group();
+  const width = 1.3;
+  const depth = 1.0;
+  const height = 2.8;
+
+  g.add(mkBox(width, height, depth, 0, height / 2, 0, mainColor, 0.82, 0.08));
+
+  for (let floor = 0; floor < 6; floor++) {
+    for (let side = -1; side <= 1; side += 2) {
+      g.add(mkBox(0.20, 0.18, 0.05, side * 0.66, 0.45 + floor * 0.38, -0.28, '#bfe9ff', 0.12, 0.08));
+      g.add(mkBox(0.20, 0.18, 0.05, side * 0.66, 0.45 + floor * 0.38, 0.28, '#bfe9ff', 0.12, 0.08));
+    }
+  }
+
+  g.add(mkBox(1.36, 0.08, 1.06, 0, height + 0.04, 0, '#5c6572', 0.88, 0.08));
+  return g;
+}
+
+function makeCloud() {
+  const g = new THREE.Group();
+  const cloudColor = '#f7fbff';
+  g.add(mkSph(0.55, 0, 0.55, 0, cloudColor, 0.98, 0.0));
+  g.add(mkSph(0.42, -0.45, 0.52, 0.12, cloudColor, 0.98, 0.0));
+  g.add(mkSph(0.48, 0.46, 0.58, -0.08, cloudColor, 0.98, 0.0));
+  g.add(mkSph(0.38, 0.92, 0.46, 0.06, cloudColor, 0.98, 0.0));
+  g.scale.set(1.4, 0.8, 0.9);
+  return g;
+}
+
+function makeStreetlight(mainColor = '#5b6370') {
+  const g = new THREE.Group();
+  const pole = mainColor;
+  const lampGlow = '#ffd166';
+
+  g.add(mkCyl(0.05, 0.06, 2.8, 0, 1.4, 0, pole, 0.55, 0.25, 12));
+  g.add(mkBox(0.52, 0.05, 0.08, 0.22, 2.72, 0, pole, 0.55, 0.25));
+  g.add(mkBox(0.16, 0.16, 0.16, 0.48, 2.62, 0, '#edf2f4', 0.18, 0.08, {
+    emissive: new THREE.Color(lampGlow),
+    emissiveIntensity: 0.7,
+  }));
+  return g;
+}
+
 /* ── Dispatch table ─────────────────────────────────────────── */
 
 const GENERATORS = {
@@ -472,6 +576,11 @@ const GENERATORS = {
   table: makeTable,
   robot: makeRobot,
   human: makeHuman,
+  airplane: makeAirplane,
+  boat: makeBoat,
+  building: makeBuilding,
+  cloud: makeCloud,
+  streetlight: makeStreetlight,
 };
 
 export const SUPPORTED_TYPES = Object.keys(GENERATORS);
