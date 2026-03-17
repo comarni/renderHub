@@ -3,9 +3,10 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import * as THREE from 'three';
-import { EventBus } from '../core/EventBus.js';
-import { NLPParser }            from '../ai/NLPParser.js';
-import { ProceduralGenerator }  from '../ai/ProceduralGenerator.js';
+import { EventBus }            from '../core/EventBus.js';
+import { NLPParser }           from '../ai/NLPParser.js';
+import { ProceduralGenerator } from '../ai/ProceduralGenerator.js';
+import { SceneSerializer }     from '../io/SceneSerializer.js';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -13,6 +14,8 @@ const RAD2DEG = 180 / Math.PI;
 const HELP_TEXT = `
 Available commands:
   gen <description>     — gen perro grande rojo | generame un coche azul
+  save [name]           — save scene as .hub file
+  load                  — load .hub file (opens file picker)
   add <type> [name]     — add cube | sphere | cylinder | plane
   select <name|all>     — select Cube.001
   deselect              — clear selection
@@ -56,9 +59,12 @@ export class CommandParser {
     this.onWireframe      = null;  // () => void
     this.onTransformMode  = null;  // (mode) => void
 
-    // AI generation modules (wired in app.js)
+    // AI generation modules
     this._nlp = new NLPParser();
     this._gen = new ProceduralGenerator();
+
+    // Scene serializer (instantiated here; needs objectManager + materialManager)
+    this._serializer = new SceneSerializer(objectManager, materialManager);
 
     this._history   = [];  // undo stack
     this._redoStack = [];  // redo stack
@@ -103,6 +109,8 @@ export class CommandParser {
         case 'undo':       return this.undo();
         case 'redo':       return this.redo();
         case 'help':       return { success: true, message: HELP_TEXT };
+        case 'save':       return this._save(args);
+        case 'load':       return this._load();
         // Natural-language generation: explicit 'gen' command
         case 'gen':        return this._generate(args.join(' '));
         default: {

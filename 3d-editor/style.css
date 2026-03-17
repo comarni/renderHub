@@ -146,6 +146,20 @@ html, body {
 }
 .btn-header.btn-accent:hover { background: var(--accent-hover); }
 
+.btn-header.btn-save {
+  background: #1e3a2a;
+  border-color: #3a7a55;
+  color: #7ed8a4;
+}
+.btn-header.btn-save:hover { background: #254a35; border-color: #5aaa7a; }
+
+.btn-header.btn-load {
+  background: #1e2d3a;
+  border-color: #3a5a7a;
+  color: #7ab4d8;
+}
+.btn-header.btn-load:hover { background: #25374a; border-color: #5a84aa; }
+
 /* ── App Layout ─────────────────────────────────────────────── */
 #app-layout {
   display: grid;

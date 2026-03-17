@@ -75,6 +75,19 @@ function init() {
     stlExporter
   );
 
+  /* ══ 6b. Save / Load toolbar buttons ══════════════════════ */
+
+  const btnSave = document.getElementById('btn-save');
+  const btnLoad = document.getElementById('btn-load');
+
+  if (btnSave) btnSave.addEventListener('click', () => {
+    const name = prompt('Scene name:', 'my-scene') ?? 'my-scene';
+    if (name !== null) commandParser.execute(`save ${name}`);
+  });
+  if (btnLoad) btnLoad.addEventListener('click', () => {
+    commandParser.execute('load');
+  });
+
   /* ══ 7. UI Components ══════════════════════════════════════ */
 
   const terminal         = new Terminal(commandParser);
