@@ -16,6 +16,7 @@ import { ObjectManager }    from './objects/ObjectManager.js';
 
 import { CommandParser }    from './commands/CommandParser.js';
 import { STLExporter }      from './export/STLExporter.js';
+import { ModelImporter }    from './io/ModelImporter.js';
 
 import { Terminal }         from './ui/Terminal.js';
 import { PropertiesPanel }  from './ui/PropertiesPanel.js';
@@ -87,7 +88,55 @@ function init() {
   if (btnLoad) btnLoad.addEventListener('click', () => {
     commandParser.execute('load');
   });
+  /* ══ 6c. Import button + drag & drop (Sprint 1.2) ══════════ */
 
+  const modelImporter = new ModelImporter(objectManager);
+  commandParser.setImporter(modelImporter);
+
+  const btnImport = document.getElementById('btn-import');
+  if (btnImport) btnImport.addEventListener('click', () => modelImporter.openPicker());
+
+  /* ══ 6d. Undo / Redo buttons + Ctrl+Z/Y (Sprint 1.3) ══════ */
+
+  const btnUndo = document.getElementById('btn-undo');
+  const btnRedo = document.getElementById('btn-redo');
+
+  function _updateUndoRedoBtns() {
+    if (btnUndo) btnUndo.disabled = !commandParser.canUndo();
+    if (btnRedo) btnRedo.disabled = !commandParser.canRedo();
+  }
+  _updateUndoRedoBtns();
+  EventBus.on('state:changed', _updateUndoRedoBtns);
+
+  if (btnUndo) btnUndo.addEventListener('click', () => {
+    const r = commandParser.undo();
+    showToast(r.message, r.success ? 'info' : 'warn');
+    _updateUndoRedoBtns();
+  });
+  if (btnRedo) btnRedo.addEventListener('click', () => {
+    const r = commandParser.redo();
+    showToast(r.message, r.success ? 'info' : 'warn');
+    _updateUndoRedoBtns();
+  });
+
+  // Global Ctrl+Z / Ctrl+Y (outside terminal focus)
+  document.addEventListener('keydown', e => {
+    const inInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+    if (!e.ctrlKey && !e.metaKey) return;
+    if (e.key === 'z' && !e.shiftKey) {
+      if (inInput) return; // let terminal handle its own history
+      e.preventDefault();
+      const r = commandParser.undo();
+      showToast(r.message, r.success ? 'info' : 'warn');
+      _updateUndoRedoBtns();
+    } else if ((e.key === 'y') || (e.key === 'z' && e.shiftKey)) {
+      if (inInput) return;
+      e.preventDefault();
+      const r = commandParser.redo();
+      showToast(r.message, r.success ? 'info' : 'warn');
+      _updateUndoRedoBtns();
+    }
+  });
   /* ══ 7. UI Components ══════════════════════════════════════ */
 
   const terminal         = new Terminal(commandParser);
@@ -119,6 +168,23 @@ function init() {
   }
 
   console.log('[RenderHub] 3D Editor initialized.');
+}
+
+/* ══ Toast notifications (Sprint 1.3) ═══════════════════ */
+
+function showToast(message, type = 'info', duration = 2400) {
+  const container = document.getElementById('toast-container');
+  if (!container || !message) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  // Trigger transition
+  requestAnimationFrame(() => toast.classList.add('toast-visible'));
+  setTimeout(() => {
+    toast.classList.remove('toast-visible');
+    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+  }, duration);
 }
 
 function setupMobileLayout() {

@@ -16,6 +16,7 @@ Available commands:
   gen <description>     — gen perro grande rojo | generame un coche azul
   save [name]           — save scene as .hub file
   load                  — load .hub file (opens file picker)
+  import                — import GLTF / OBJ model (opens file picker)
   add <type> [name]     — add cube | sphere | cylinder | plane
   select <name|all>     — select Cube.001
   deselect              — clear selection
@@ -66,10 +67,22 @@ export class CommandParser {
     // Scene serializer (instantiated here; needs objectManager + materialManager)
     this._serializer = new SceneSerializer(objectManager, materialManager);
 
-    this._history   = [];  // undo stack
+    // ModelImporter set externally via setImporter()
+    this._importer = null;
+
+    this._history   = [];  // undo stack (100 entries)
     this._redoStack = [];  // redo stack
   }
+  /** Wire the ModelImporter after construction. */
+  setImporter(importer) {
+    this._importer = importer;
+  }
 
+  /** True if there are undo steps available. */
+  canUndo() { return this._history.length > 0; }
+
+  /** True if there are redo steps available. */
+  canRedo() { return this._redoStack.length > 0; }
   /* ══ Public API ═══════════════════════════════════════════════ */
 
   /**
@@ -111,6 +124,7 @@ export class CommandParser {
         case 'help':       return { success: true, message: HELP_TEXT };
         case 'save':       return this._save(args);
         case 'load':       return this._load();
+        case 'import':     return this._import();
         // Natural-language generation: explicit 'gen' command
         case 'gen':        return this._generate(args.join(' '));
         default: {
@@ -130,7 +144,7 @@ export class CommandParser {
   _pushHistory(label, undoFn, redoFn) {
     this._history.push({ label, undo: undoFn, redo: redoFn });
     this._redoStack = [];
-    if (this._history.length > 50) this._history.shift();
+    if (this._history.length > 100) this._history.shift();
   }
 
   undo() {
