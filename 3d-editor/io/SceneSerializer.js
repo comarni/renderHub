@@ -10,16 +10,8 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import * as THREE from 'three';
-import { ProceduralGenerator } from '../ai/ProceduralGenerator.js';
 
-const FORMAT_VERSION = 1;
-const PRIMITIVE_TYPES = new Set(['box', 'sphere', 'cylinder', 'plane']);
-
-/* ── Colour helper ──────────────────────────────────────────── */
-function colorHex(color) {
-  // color is a THREE.Color
-  return '#' + color.getHexString();
-}
+const FORMAT_VERSION = 2;
 
 export class SceneSerializer {
   /**
@@ -29,7 +21,6 @@ export class SceneSerializer {
   constructor(objectManager, materialManager) {
     this.objs = objectManager;
     this.mat  = materialManager;
-    this._gen = new ProceduralGenerator();
   }
 
   /* ── Save ───────────────────────────────────────────────────── */
@@ -39,54 +30,34 @@ export class SceneSerializer {
    * @param {string} filename — without extension
    */
   save(filename = 'scene') {
+    const hub = this.serialize(filename);
+    this._download(JSON.stringify(hub, null, 2), `${filename}.hub`, 'application/json');
+    return `Scene saved as "${filename}.hub" (${hub.objects.length} object${hub.objects.length !== 1 ? 's' : ''})`;
+  }
+
+  /**
+   * Build a serializable hub object for the current scene.
+   * @param {string} filename
+   */
+  serialize(filename = 'scene') {
     const objects = [];
 
     for (const record of this.objs.list()) {
       const mesh = record.mesh;
-      const entry = {
+      objects.push({
         id:   record.id,
         name: record.name,
         type: record.type,
-        position: mesh.position.toArray(),
-        rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
-        scale:    mesh.scale.toArray(),
-      };
-
-      if (PRIMITIVE_TYPES.has(record.type)) {
-        // Primitive: serialise material
-        const m = mesh.material;
-        entry.material = {
-          color:     colorHex(m.color),
-          roughness: m.roughness,
-          metalness: m.metalness,
-          opacity:   m.opacity,
-          transparent: m.transparent,
-        };
-        entry.kind = 'primitive';
-      } else {
-        // Procedural group: store color of first mesh child if available
-        let groupColor = null;
-        mesh.traverse(child => {
-          if (!groupColor && child.isMesh && child.material) {
-            groupColor = colorHex(child.material.color);
-          }
-        });
-        entry.color = groupColor;
-        entry.kind  = 'procedural';
-      }
-
-      objects.push(entry);
+        object: mesh.toJSON(),
+      });
     }
 
-    const hub = {
+    return {
       version:   FORMAT_VERSION,
       name:      filename,
       createdAt: new Date().toISOString(),
       objects,
     };
-
-    this._download(JSON.stringify(hub, null, 2), `${filename}.hub`, 'application/json');
-    return `Scene saved as "${filename}.hub" (${objects.length} object${objects.length !== 1 ? 's' : ''})`;
   }
 
   /* ── Load ───────────────────────────────────────────────────── */
@@ -108,7 +79,7 @@ export class SceneSerializer {
       try {
         const text = await file.text();
         const hub  = JSON.parse(text);
-        const msg  = this._restore(hub);
+        const msg  = this.restore(hub);
         onComplete({ success: true, message: msg });
       } catch (e) {
         onComplete({ success: false, message: `Load failed: ${e.message}` });
@@ -121,7 +92,7 @@ export class SceneSerializer {
 
   /* ── Private: restore ───────────────────────────────────────── */
 
-  _restore(hub) {
+  restore(hub) {
     if (!hub.objects || !Array.isArray(hub.objects)) {
       throw new Error('Invalid .hub file: missing objects array');
     }
@@ -131,42 +102,17 @@ export class SceneSerializer {
     for (const id of allIds) this.objs.delete(id);
 
     let loaded = 0;
+    const loader = new THREE.ObjectLoader();
 
     for (const entry of hub.objects) {
       try {
-        const pos = entry.position || [0, 0, 0];
-        const rot = entry.rotation || [0, 0, 0];
-        const scl = entry.scale    || [1, 1, 1];
-
-        if (entry.kind === 'primitive' || PRIMITIVE_TYPES.has(entry.type)) {
-          // Recreate primitive
-          const record = this.objs.add(entry.type, entry.name);
-          const mesh   = record.mesh;
-
-          mesh.position.fromArray(pos);
-          mesh.rotation.set(rot[0], rot[1], rot[2]);
-          mesh.scale.fromArray(scl);
-
-          if (entry.material) {
-            const m = entry.material;
-            mesh.material.color.set(m.color);
-            mesh.material.roughness    = m.roughness ?? 0.5;
-            mesh.material.metalness    = m.metalness ?? 0.0;
-            mesh.material.opacity      = m.opacity   ?? 1.0;
-            mesh.material.transparent  = m.transparent ?? false;
-          }
-        } else {
-          // Recreate procedural group
-          const group = this._gen.generate(entry.type, {
-            color: entry.color || undefined,
-          });
-
-          group.position.fromArray(pos);
-          group.rotation.set(rot[0], rot[1], rot[2]);
-          group.scale.fromArray(scl);
-
-          this.objs.addGroup(group, entry.name, entry.type);
-        }
+        if (!entry.object) throw new Error('Missing object payload');
+        const object3D = loader.parse(entry.object);
+        this.objs.addGroup(
+          object3D,
+          entry.name || object3D.name || 'Object',
+          entry.type || object3D.userData.editorType || 'object'
+        );
 
         loaded++;
       } catch (err) {

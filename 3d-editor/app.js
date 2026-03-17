@@ -21,6 +21,7 @@ import { ModelImporter }    from './io/ModelImporter.js';
 import { Terminal }         from './ui/Terminal.js';
 import { PropertiesPanel }  from './ui/PropertiesPanel.js';
 import { SceneHierarchy }   from './ui/SceneHierarchy.js';
+import { ProjectLibrary }   from './ui/ProjectLibrary.js';
 import { ViewportOverlay }  from './ui/ViewportOverlay.js';
 
 /* ══ 1. Wait for DOM ══════════════════════════════════════════ */
@@ -81,9 +82,18 @@ function init() {
   const btnSave = document.getElementById('btn-save');
   const btnLoad = document.getElementById('btn-load');
 
+  let projectLibrary = null;
+
   if (btnSave) btnSave.addEventListener('click', () => {
     const name = prompt('Scene name:', 'my-scene') ?? 'my-scene';
-    if (name !== null) commandParser.execute(`save ${name}`);
+    if (name !== null) {
+      const result = commandParser.execute(`save ${name}`);
+      if (projectLibrary) {
+        const localResult = projectLibrary.saveCurrentProject(name);
+        showToast(localResult.message, localResult.success ? 'info' : 'warn');
+      }
+      if (result?.message) showToast(result.message, result.success ? 'info' : 'warn');
+    }
   });
   if (btnLoad) btnLoad.addEventListener('click', () => {
     commandParser.execute('load');
@@ -142,6 +152,13 @@ function init() {
   const terminal         = new Terminal(commandParser);
   const propertiesPanel  = new PropertiesPanel(commandParser, selectionManager, cameraManager);
   const sceneHierarchy   = new SceneHierarchy(objectManager, selectionManager, commandParser);
+  projectLibrary         = new ProjectLibrary(commandParser, () => {
+    try {
+      return renderer.domElement.toDataURL('image/jpeg', 0.72);
+    } catch {
+      return null;
+    }
+  });
   const viewportOverlay  = new ViewportOverlay(commandParser, objectManager, selectionManager);
   setupMobileLayout();
 

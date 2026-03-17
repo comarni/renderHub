@@ -84,6 +84,16 @@ export class CommandParser {
 
   /** True if there are redo steps available. */
   canRedo() { return this._redoStack.length > 0; }
+
+  /** Build a serializable scene payload without downloading a file. */
+  serializeScene(name = 'scene') {
+    return this._serializer.serialize(name);
+  }
+
+  /** Restore scene data from a previously serialized payload. */
+  loadSceneData(data) {
+    return this._serializer.restore(data);
+  }
   /* ══ Public API ═══════════════════════════════════════════════ */
 
   /**
