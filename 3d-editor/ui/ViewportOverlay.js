@@ -153,10 +153,6 @@ export class ViewportOverlay {
         case 'g': this.sel.setMode('translate'); this._setActiveTransformBtn('translate'); break;
         case 'r': this.sel.setMode('rotate');    this._setActiveTransformBtn('rotate');    break;
         case 's': this.sel.setMode('scale');     this._setActiveTransformBtn('scale');     break;
-        case 'x':
-        case 'delete':
-          this.parser.execute('delete');
-          break;
         case 'escape':
           this.sel.deselectAll();
           break;
@@ -168,6 +164,10 @@ export class ViewportOverlay {
         case 'x':
         case 'delete':
           this.parser.execute('delete');
+          break;
+        case 'z':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
             e.shiftKey ? this.parser.execute('redo') : this.parser.execute('undo');
           }
           break;
