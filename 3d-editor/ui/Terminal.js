@@ -99,6 +99,14 @@ export class Terminal {
     const raw = this._input.value.trim();
     if (!raw) return;
 
+    EventBus.emit('analytics:event', {
+      name: 'prompt_used',
+      payload: {
+        prompt: raw.slice(0, 140),
+        source: 'terminal',
+      },
+    });
+
     // Record in history (avoid duplicates at top)
     if (this._history[0] !== raw) this._history.unshift(raw);
     if (this._history.length > 100) this._history.pop();

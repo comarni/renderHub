@@ -9,6 +9,9 @@ const TYPE_ICONS = {
   sphere:   '&#9679;',  // ●
   cylinder: '&#11044;', // ⬬ (using a circle as fallback)
   plane:    '&#9644;',  // ▬
+  image:    '&#128247;', // 📷
+  image3d:  '&#129504;', // 🧠
+  web:      '&#127760;', // 🌐
 };
 
 export class SceneHierarchy {

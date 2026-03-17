@@ -22,7 +22,7 @@ export class ObjectManager {
 
     // Counters for auto-naming
     this._counter = {
-      box: 0, sphere: 0, cylinder: 0, plane: 0,
+      box: 0, sphere: 0, cylinder: 0, plane: 0, web: 0,
       dog: 0, cat: 0, car: 0, house: 0, tree: 0, chair: 0, table: 0, robot: 0, human: 0,
       airplane: 0, boat: 0, building: 0, cloud: 0, streetlight: 0,
     };
@@ -43,7 +43,7 @@ export class ObjectManager {
   _generateName(type) {
     this._counter[type] = (this._counter[type] || 0) + 1;
     const labels = {
-      box: 'Cube', sphere: 'Sphere', cylinder: 'Cylinder', plane: 'Plane',
+      box: 'Cube', sphere: 'Sphere', cylinder: 'Cylinder', plane: 'Plane', web: 'WebPlane',
       dog: 'Dog', cat: 'Cat', car: 'Car', house: 'House',
       tree: 'Tree', chair: 'Chair', table: 'Table', robot: 'Robot', human: 'Human',
       airplane: 'Airplane', boat: 'Boat', building: 'Building', cloud: 'Cloud', streetlight: 'Streetlight',
@@ -122,6 +122,95 @@ export class ObjectManager {
 
     const record = { id, name: displayName, type, mesh, material: mat };
 
+    this.objects.set(id, record);
+    this.scene.add(mesh);
+
+    EventBus.emit('state:changed', { type: 'scene' });
+    return record;
+  }
+
+  /**
+   * Add an image as a textured plane object.
+   * @param {{name?: string, texture: THREE.Texture, width?: number, height?: number}} options
+   * @returns {ObjectRecord}
+   */
+  addImagePlane(options) {
+    const width = options?.width || 2;
+    const height = options?.height || 2;
+    const geo = new THREE.PlaneGeometry(width, height);
+    const mat = new THREE.MeshStandardMaterial({
+      map: options.texture,
+      transparent: true,
+      side: THREE.DoubleSide,
+      roughness: 0.85,
+      metalness: 0,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.position.set(0, Math.max(1, height * 0.5), 0);
+
+    const id = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const displayName = options?.name || this._generateName('plane');
+
+    mesh.name = displayName;
+    mesh.userData.editorId = id;
+    mesh.userData.editorName = displayName;
+    mesh.userData.editorType = 'image';
+    mesh.userData.imagePlane = true;
+
+    const record = { id, name: displayName, type: 'image', mesh, material: mat };
+    this.objects.set(id, record);
+    this.scene.add(mesh);
+
+    EventBus.emit('state:changed', { type: 'scene' });
+    return record;
+  }
+
+  /**
+   * Add a web surface as a plane host for an interactive iframe layer.
+   * @param {{name?: string, width?: number, height?: number, source: { mode: 'url'|'html', value: string }, frameColor?: number}} options
+   * @returns {ObjectRecord}
+   */
+  addWebPlane(options) {
+    const width = options?.width || 2.4;
+    const height = options?.height || 1.35;
+
+    const geo = new THREE.PlaneGeometry(width, height);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x101820,
+      emissive: 0x05080b,
+      roughness: 0.95,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.94,
+      side: THREE.DoubleSide,
+    });
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.position.set(0, Math.max(1.1, height * 0.6), 0);
+
+    const frameGeo = new THREE.EdgesGeometry(geo);
+    const frameMat = new THREE.LineBasicMaterial({ color: options?.frameColor || 0x49c6ff });
+    const frame = new THREE.LineSegments(frameGeo, frameMat);
+    frame.position.z = 0.0015;
+    mesh.add(frame);
+
+    const id = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const displayName = options?.name || this._generateName('web');
+
+    mesh.name = displayName;
+    mesh.userData.editorId = id;
+    mesh.userData.editorName = displayName;
+    mesh.userData.editorType = 'web';
+    mesh.userData.webPlane = true;
+    mesh.userData.webSource = options?.source || { mode: 'url', value: 'about:blank' };
+    mesh.userData.webFrameRef = frame;
+
+    const record = { id, name: displayName, type: 'web', mesh, material: mat };
     this.objects.set(id, record);
     this.scene.add(mesh);
 
@@ -260,7 +349,7 @@ export class ObjectManager {
     ids.forEach(id => this.delete(id));
     // Reset counters
     this._counter = {
-      box: 0, sphere: 0, cylinder: 0, plane: 0,
+      box: 0, sphere: 0, cylinder: 0, plane: 0, web: 0,
       dog: 0, cat: 0, car: 0, house: 0, tree: 0, chair: 0, table: 0, robot: 0, human: 0,
       airplane: 0, boat: 0, building: 0, cloud: 0, streetlight: 0,
     };
@@ -269,7 +358,6 @@ export class ObjectManager {
   _cloneObject3D(object) {
     const clone = object.clone(true);
     clone.traverse(child => {
-      if (!child.isMesh) return;
       if (child.geometry) child.geometry = child.geometry.clone();
       if (Array.isArray(child.material)) {
         child.material = child.material.map(material => material.clone());
@@ -282,7 +370,6 @@ export class ObjectManager {
 
   _disposeObject3D(object) {
     object.traverse(child => {
-      if (!child.isMesh) return;
       if (child.geometry) child.geometry.dispose();
       if (Array.isArray(child.material)) child.material.forEach(material => material.dispose());
       else if (child.material) child.material.dispose();
@@ -294,7 +381,7 @@ export class ObjectManager {
  * @typedef {Object} ObjectRecord
  * @property {string} id
  * @property {string} name
- * @property {'box'|'sphere'|'cylinder'|'plane'} type
- * @property {THREE.Mesh} mesh
- * @property {THREE.MeshStandardMaterial} material
+ * @property {'box'|'sphere'|'cylinder'|'plane'|'image'|'image3d'|'web'} type
+ * @property {THREE.Object3D} mesh
+ * @property {THREE.Material|null} material
  */

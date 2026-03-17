@@ -282,6 +282,15 @@ export class CommandParser {
     // Select all generated objects
     this.sel.selectByIds(ids, false);
 
+    EventBus.emit('analytics:event', {
+      name: 'scene_created',
+      payload: {
+        source: 'nlp_generate',
+        objectType: type,
+        count,
+      },
+    });
+
     const colorInfo = color  ? ` color:${color}`   : '';
     const scaleInfo = scale !== 1 ? ` scale:×${scale}` : '';
     return {
@@ -304,6 +313,15 @@ export class CommandParser {
 
     const record = this.objs.add(type, nameArg);
     this.sel.selectByIds([record.id], false);
+
+    EventBus.emit('analytics:event', {
+      name: 'scene_created',
+      payload: {
+        source: 'add_command',
+        objectType: type,
+        count: 1,
+      },
+    });
 
     this._pushHistory(
       `add ${record.name}`,
@@ -570,6 +588,14 @@ export class CommandParser {
   _export(args) {
     if (!this.exp) return { success: false, message: 'Exporter not available.' };
     const filename = args[0] || 'scene.stl';
+    EventBus.emit('analytics:event', {
+      name: 'export_clicked',
+      payload: {
+        source: 'terminal',
+        exportType: 'stl',
+        filename,
+      },
+    });
     return this.exp.export(filename);
   }
 
@@ -899,6 +925,15 @@ export class CommandParser {
     }
     const projectName = args[0] || 'atmospheric-story';
     const numScenes = parseInt(args[1], 10) || 5;
+    EventBus.emit('analytics:event', {
+      name: 'export_clicked',
+      payload: {
+        source: 'terminal',
+        exportType: 'atmospheric_html',
+        filename: projectName,
+        scenes: numScenes,
+      },
+    });
     return this._atmosphericExporter.export(projectName, numScenes);
   }
 }

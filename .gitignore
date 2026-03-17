@@ -1,3 +1,26 @@
 .claude/
 .DS_Store
 Thumbs.db
+
+# Node / frontend deps
+node_modules/
+
+# Python virtual environments
+.venv/
+venv/
+.venv311/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Runtime logs and local run outputs
+*.log
+.runlogs/
+outputs/
+exports/
+triposr-service/TripoSR/
+
+# Generated archives
+*.zip

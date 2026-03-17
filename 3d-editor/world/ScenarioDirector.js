@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ProceduralGenerator } from '../ai/ProceduralGenerator.js';
+import { EventBus } from '../core/EventBus.js';
 
 const SCENARIO_ALIASES = {
   city: 'cityTraffic',
@@ -116,6 +117,17 @@ export class ScenarioDirector {
 
     const objectsCreated = this.objs.list().length;
     this._currentScenario = resolved;
+
+    EventBus.emit('analytics:event', {
+      name: 'scene_created',
+      payload: {
+        source: 'scenario',
+        scenario: resolved,
+        shuffle,
+        density,
+        objectCount: objectsCreated,
+      },
+    });
 
     const primary = this.objs.list()[0];
     if (primary) this.camera.focusOn(primary.mesh);

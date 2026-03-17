@@ -36,6 +36,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let _previewObjectUrl = null;
 
+const analytics = {
+  events: [],
+  track(name, payload = {}) {
+    const evt = {
+      name,
+      payload,
+      ts: new Date().toISOString(),
+    };
+    this.events.push(evt);
+    if (this.events.length > 200) this.events.shift();
+    try {
+      localStorage.setItem('renderhub.analytics.events', JSON.stringify(this.events));
+    } catch {
+      // Ignore localStorage errors in private mode/quota limits.
+    }
+    console.info('[analytics]', evt);
+    EventBus.emit('analytics:tracked', evt);
+  },
+};
+
+window.renderHubAnalytics = analytics;
+
 function init() {
   const canvasContainer = document.getElementById('viewport-canvas');
   if (!canvasContainer) {
@@ -85,6 +107,11 @@ function init() {
     stlExporter
   );
 
+  EventBus.on('analytics:event', ({ name, payload }) => {
+    if (!name) return;
+    analytics.track(name, payload || {});
+  });
+
   const environmentManager = new EnvironmentManager(sceneManager.scene, cameraManager, grid);
   const scenarioDirector = new ScenarioDirector(
     objectManager,
@@ -120,22 +147,38 @@ function init() {
   });
   /* ══ 6c. Import button + drag & drop (Sprint 1.2) ══════════ */
 
-  const modelImporter = new ModelImporter(objectManager);
+  // Local-only mode: do not initialize remote AI clients.
+  const modelImporter = new ModelImporter(objectManager, cameraManager, selectionManager, null, renderer);
   commandParser.setImporter(modelImporter);
 
   commandParser.setAtmosphericExporter(atmosphericExporter);
   const btnImport = document.getElementById('btn-import');
-  if (btnImport) btnImport.addEventListener('click', () => modelImporter.openPicker());
+  const btnImportImage = document.getElementById('btn-import-image');
+  const btnImageTo3D = document.getElementById('btn-image-to-3d');
+  const btnImportWeb = document.getElementById('btn-import-web');
+  if (btnImport) btnImport.addEventListener('click', () => modelImporter.openModelPicker());
+  if (btnImportImage) btnImportImage.addEventListener('click', () => modelImporter.openImagePlanePicker());
+  if (btnImageTo3D) btnImageTo3D.addEventListener('click', () => modelImporter.openImage3DPicker());
+  if (btnImportWeb) btnImportWeb.addEventListener('click', () => modelImporter.openWebPlaneDialog());
 
   /* ══ 6c. Export buttons (STL + HTML) ════════════════════════ */
 
   const btnExportSTL = document.getElementById('btn-export-stl');
   const btnExportHTML = document.getElementById('btn-export-html');
+  const exportPresetSelect = document.getElementById('export-preset');
 
   if (btnExportSTL) {
     btnExportSTL.addEventListener('click', () => {
       const filename = prompt('Export STL as:', 'scene') ?? 'scene';
       if (filename) {
+        EventBus.emit('analytics:event', {
+          name: 'export_clicked',
+          payload: {
+            source: 'button',
+            exportType: 'stl',
+            filename,
+          },
+        });
         const result = stlExporter.export(filename);
         showToast(result.message, result.success ? 'info' : 'warn');
       }
@@ -146,7 +189,17 @@ function init() {
     btnExportHTML.addEventListener('click', () => {
       const filename = prompt('Export HTML as:', 'scene-export') ?? 'scene-export';
       if (filename) {
-        const result = htmlExporter.export(filename);
+        const preset = exportPresetSelect?.value || 'agency';
+        EventBus.emit('analytics:event', {
+          name: 'export_clicked',
+          payload: {
+            source: 'button',
+            exportType: 'html',
+            preset,
+            filename,
+          },
+        });
+        const result = htmlExporter.export(filename, { preset });
         showToast(result.message, result.success ? 'info' : 'warn');
       }
     });
@@ -208,6 +261,7 @@ function init() {
   const viewportOverlay  = new ViewportOverlay(commandParser, objectManager, selectionManager);
   setupMobileLayout();
   setupExportPreview();
+  setupGuidedDemo(commandParser);
 
   /* ══ 8. Render Loop ════════════════════════════════════════ */
 
@@ -224,6 +278,7 @@ function init() {
     // Update dynamic world ambience
     environmentManager.update(delta, now);
     scenarioDirector.update(delta, now);
+    modelImporter.update();
 
     // Render
     renderer.render(sceneManager.scene, cameraManager.activeCamera);
@@ -300,6 +355,101 @@ function setupExportPreview() {
     preview.classList.remove('hidden');
     showToast('Preview cargado en RenderHub', 'info');
   });
+}
+
+function setupGuidedDemo(commandParser) {
+  const panel = document.getElementById('guided-demo');
+  const btnStart = document.getElementById('btn-demo');
+  const btnClose = document.getElementById('btn-demo-close');
+  const btnPrev = document.getElementById('btn-demo-prev');
+  const btnNext = document.getElementById('btn-demo-next');
+  const btnRun = document.getElementById('btn-demo-run');
+  const stepEl = document.getElementById('guided-demo-step');
+  const titleEl = document.getElementById('guided-demo-title');
+  const textEl = document.getElementById('guided-demo-text');
+  const exportPresetSelect = document.getElementById('export-preset');
+  const btnExportHTML = document.getElementById('btn-export-html');
+
+  if (!panel || !btnStart || !btnClose || !btnPrev || !btnNext || !btnRun || !stepEl || !titleEl || !textEl) return;
+
+  const runCommand = (command) => {
+    EventBus.emit('analytics:event', {
+      name: 'prompt_used',
+      payload: {
+        source: 'guided_demo',
+        prompt: command,
+      },
+    });
+    const result = commandParser.execute(command);
+    showToast(result.message || command, result.success ? 'info' : 'warn');
+  };
+
+  const steps = [
+    {
+      title: 'Crear base de escena',
+      text: 'Genera un entorno base para demo comercial.',
+      run: () => runCommand('scenario cityTraffic 2'),
+    },
+    {
+      title: 'Añadir producto protagonista',
+      text: 'Crea un objeto hero para demostrar personalización.',
+      run: () => runCommand('gen car gold 1'),
+    },
+    {
+      title: 'Aplicar look premium',
+      text: 'Activa un ambiente para demo orientada a cliente.',
+      run: () => runCommand('environment sky'),
+    },
+    {
+      title: 'Preset de export',
+      text: 'Selecciona preset de vertical para salida final.',
+      run: () => {
+        if (exportPresetSelect) exportPresetSelect.value = 'agency';
+        showToast('Preset seleccionado: agency', 'info');
+      },
+    },
+    {
+      title: 'Exportar demo',
+      text: 'Descarga el HTML interactivo listo para presentar.',
+      run: () => {
+        if (btnExportHTML) btnExportHTML.click();
+      },
+    },
+  ];
+
+  let idx = 0;
+
+  const renderStep = () => {
+    const step = steps[idx];
+    stepEl.textContent = `Step ${idx + 1}/${steps.length}`;
+    titleEl.textContent = step.title;
+    textEl.textContent = step.text;
+    btnPrev.disabled = idx === 0;
+    btnNext.disabled = idx === steps.length - 1;
+  };
+
+  btnStart.addEventListener('click', () => {
+    panel.classList.remove('hidden');
+    idx = 0;
+    renderStep();
+    EventBus.emit('analytics:event', {
+      name: 'guided_demo_opened',
+      payload: { source: 'header_button' },
+    });
+  });
+
+  btnClose.addEventListener('click', () => panel.classList.add('hidden'));
+  btnPrev.addEventListener('click', () => {
+    idx = Math.max(0, idx - 1);
+    renderStep();
+  });
+  btnNext.addEventListener('click', () => {
+    idx = Math.min(steps.length - 1, idx + 1);
+    renderStep();
+  });
+  btnRun.addEventListener('click', () => steps[idx].run());
+
+  renderStep();
 }
 
 function setupMobileLayout() {

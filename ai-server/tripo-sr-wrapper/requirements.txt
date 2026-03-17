@@ -1,0 +1,18 @@
+# Flask API server
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+
+# PyTorch (la rueda exacta se resolvera segun Python/OS/GPU)
+torch>=2.5.0
+torchvision>=0.20.0
+
+# Image processing
+Pillow>=10.1.0
+numpy>=1.26.0
+
+# mesh export (optional but recommended for GLB support)
+trimesh>=4.0.0
+
+# TripoSR model
+# Install from: pip install git+https://github.com/VAST-AI-Research/Tripo-SR.git
+# or use: pip install tripo (if available on PyPI)

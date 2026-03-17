@@ -4,6 +4,30 @@
 
 import * as THREE from 'three';
 
+const EXPORT_PRESETS = {
+  agency: {
+    label: 'Agency Campaign',
+    accent: '#6fc9f6',
+    panelBg: 'rgba(8, 16, 24, 0.84)',
+    bodyBg: '#101722',
+    controlsText: 'Controls: Drag to orbit • Scroll to zoom • Right-click + drag to pan',
+  },
+  ecommerce: {
+    label: 'Ecommerce Product View',
+    accent: '#42d392',
+    panelBg: 'rgba(10, 20, 14, 0.84)',
+    bodyBg: '#0f1713',
+    controlsText: 'Controls: Drag to inspect product • Scroll to zoom • Right-click + drag to pan',
+  },
+  realestate: {
+    label: 'Real Estate Showcase',
+    accent: '#ffbf69',
+    panelBg: 'rgba(24, 16, 8, 0.84)',
+    bodyBg: '#18120d',
+    controlsText: 'Controls: Drag to orbit property • Scroll to zoom • Right-click + drag to pan',
+  },
+};
+
 export class HTMLEmbeddedExporter {
   /**
    * @param {THREE.Scene}                                             scene
@@ -83,7 +107,8 @@ export class HTMLEmbeddedExporter {
    * @param {string} title - Page title
    * @returns {string} Complete HTML document
    */
-  _generateHTML(title = 'RenderHub Export') {
+  _generateHTML(title = 'RenderHub Export', presetKey = 'agency') {
+    const preset = EXPORT_PRESETS[presetKey] || EXPORT_PRESETS.agency;
     const sceneData = JSON.stringify(this._serializeScene(), null, 2);
 
     return `<!DOCTYPE html>
@@ -103,7 +128,7 @@ export class HTMLEmbeddedExporter {
       width: 100%;
       height: 100%;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1a1a1a;
+      background: ${preset.bodyBg};
       overflow: hidden;
     }
 
@@ -121,7 +146,7 @@ export class HTMLEmbeddedExporter {
       position: absolute;
       top: 16px;
       left: 16px;
-      background: rgba(0, 0, 0, 0.8);
+      background: ${preset.panelBg};
       color: #e0e0e0;
       padding: 12px 16px;
       border-radius: 6px;
@@ -135,7 +160,7 @@ export class HTMLEmbeddedExporter {
     #info-panel h3 {
       font-size: 14px;
       margin-bottom: 8px;
-      color: #6fc9f6;
+      color: ${preset.accent};
     }
 
     .info-line {
@@ -149,7 +174,7 @@ export class HTMLEmbeddedExporter {
       bottom: 16px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.8);
+      background: ${preset.panelBg};
       color: #e0e0e0;
       padding: 12px 16px;
       border-radius: 6px;
@@ -164,7 +189,7 @@ export class HTMLEmbeddedExporter {
       left: 50%;
       transform: translate(-50%, -50%);
       text-align: center;
-      color: #6fc9f6;
+      color: ${preset.accent};
       font-size: 16px;
     }
 
@@ -172,8 +197,8 @@ export class HTMLEmbeddedExporter {
       display: inline-block;
       width: 30px;
       height: 30px;
-      border: 3px solid rgba(111, 201, 246, 0.3);
-      border-top: 3px solid #6fc9f6;
+      border: 3px solid ${preset.accent};
+      border-top: 3px solid ${preset.accent};
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin-bottom: 12px;
@@ -193,7 +218,7 @@ export class HTMLEmbeddedExporter {
   </div>
 
   <div id="info-panel">
-    <h3>🎨 RenderHub Export</h3>
+    <h3>🎨 ${preset.label}</h3>
     <div class="info-line">
       <span>Objects:</span>
       <span id="obj-count">0</span>
@@ -205,7 +230,7 @@ export class HTMLEmbeddedExporter {
   </div>
 
   <div id="controls-panel">
-    <strong>Controls:</strong> Drag to rotate • Scroll to zoom • Right-click + drag to pan
+    <strong>${preset.label}:</strong> ${preset.controlsText}
   </div>
 
   <script type="importmap">
@@ -475,7 +500,7 @@ export class HTMLEmbeddedExporter {
    * @param {string} filename - output filename (without .html)
    * @returns {{ success: boolean, message: string }}
    */
-  export(filename = 'scene-export') {
+  export(filename = 'scene-export', options = {}) {
     const objects = this.objs.list();
 
     if (objects.length === 0) {
@@ -484,7 +509,9 @@ export class HTMLEmbeddedExporter {
 
     try {
       const title = filename.replace(/[^a-z0-9]/gi, '-').substring(0, 50);
-      const html = this._generateHTML(title);
+      const preset = String(options.preset || 'agency').toLowerCase();
+      const resolvedPreset = EXPORT_PRESETS[preset] ? preset : 'agency';
+      const html = this._generateHTML(title, resolvedPreset);
 
       // Trigger browser download
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
@@ -500,7 +527,7 @@ export class HTMLEmbeddedExporter {
       const kb = (blob.size / 1024).toFixed(1);
       return {
         success: true,
-        message: `Exported "${link.download}" (${objects.length} object${objects.length !== 1 ? 's' : ''}, ${kb} KB)`
+        message: `Exported "${link.download}" [${resolvedPreset}] (${objects.length} object${objects.length !== 1 ? 's' : ''}, ${kb} KB)`
       };
     } catch (err) {
       console.error('[HTMLEmbeddedExporter] Error:', err);
