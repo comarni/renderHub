@@ -18,15 +18,27 @@ import { CommandParser }    from './commands/CommandParser.js';
 import { STLExporter }      from './export/STLExporter.js';
 import { HTMLEmbeddedExporter } from './export/HTMLEmbeddedExporter.js';
 import { AtmosphericStoryExporter } from './export/AtmosphericStoryExporter.js';
+import { ObjectExporter }    from './export/ObjectExporter.js';
 import { ModelImporter }    from './io/ModelImporter.js';
+
+// ── Pluggable export system ──────────────────────────────────────
+import { ExportManager }          from './export/ExportManager.js';
+import { ExportPanel }            from './export/ExportPanel.js';
+import { STLPluggableExporter }   from './export/exporters/stlExporter.js';
+import { GLTFPluggableExporter }  from './export/exporters/gltfExporter.js';
+import { JSONPluggableExporter }  from './export/exporters/jsonExporter.js';
+import { HTMLPluggableExporter }  from './export/exporters/htmlExporter.js';
 
 import { Terminal }         from './ui/Terminal.js';
 import { PropertiesPanel }  from './ui/PropertiesPanel.js';
 import { SceneHierarchy }   from './ui/SceneHierarchy.js';
+import { RadialContextMenu } from './ui/RadialContextMenu.js';
 import { ProjectLibrary }   from './ui/ProjectLibrary.js';
 import { ViewportOverlay }  from './ui/ViewportOverlay.js';
 import { EnvironmentManager } from './world/EnvironmentManager.js';
+import { ObjectAnimator } from './world/ObjectAnimator.js';
 import { ScenarioDirector } from './world/ScenarioDirector.js';
+import { initCadModule } from './cad/CadModule.js';
 
 /* ══ 1. Wait for DOM ══════════════════════════════════════════ */
 
@@ -97,6 +109,29 @@ function init() {
   const htmlExporter = new HTMLEmbeddedExporter(sceneManager.scene, objectManager, materialManager);
   const atmosphericExporter = new AtmosphericStoryExporter(sceneManager.scene, objectManager, materialManager);
 
+  const objectExporter = new ObjectExporter(sceneManager.scene);
+  // Radial context menu: right-click any object in the viewport
+  new RadialContextMenu(objectManager, objectExporter, selectionManager, cameraManager);
+
+  /* ══ 5b. Pluggable Export System ═══════════════════════════ */
+
+  // ExportManager is wired after initCadModule so cadState is available.
+  // We create it now and later (step 7) inject cadState once available.
+  const exportManager = new ExportManager({
+    scene:           sceneManager.scene,
+    objectManager,
+    materialManager,
+    cadState:        null,   // patched after initCadModule below
+  });
+
+  exportManager
+    .register(new STLPluggableExporter())
+    .register(new GLTFPluggableExporter())
+    .register(new JSONPluggableExporter())
+    .register(new HTMLPluggableExporter());
+
+  const exportPanel = new ExportPanel(exportManager);
+
   /* ══ 6. Command Parser ═════════════════════════════════════ */
 
   const commandParser = new CommandParser(
@@ -113,6 +148,13 @@ function init() {
   });
 
   const environmentManager = new EnvironmentManager(sceneManager.scene, cameraManager, grid);
+  const objectAnimator = new ObjectAnimator(
+    sceneManager.scene,
+    objectManager,
+    materialManager,
+    selectionManager,
+    cameraManager
+  );
   const scenarioDirector = new ScenarioDirector(
     objectManager,
     materialManager,
@@ -121,6 +163,7 @@ function init() {
     cameraManager
   );
   commandParser.setEnvironmentManager(environmentManager);
+  commandParser.setObjectAnimator(objectAnimator);
   commandParser.setScenarioDirector(scenarioDirector);
   environmentManager.applyPreset('studio');
 
@@ -128,6 +171,7 @@ function init() {
 
   const btnSave = document.getElementById('btn-save');
   const btnLoad = document.getElementById('btn-load');
+  const btnClearAll = document.getElementById('btn-clear-all');
 
   let projectLibrary = null;
 
@@ -145,6 +189,12 @@ function init() {
   if (btnLoad) btnLoad.addEventListener('click', () => {
     commandParser.execute('load');
   });
+  if (btnClearAll) btnClearAll.addEventListener('click', () => {
+    const ok = confirm('Delete ALL objects in the current scene?');
+    if (!ok) return;
+    const result = commandParser.execute('reset');
+    if (result?.message) showToast(result.message, result.success ? 'info' : 'warn');
+  });
   /* ══ 6c. Import button + drag & drop (Sprint 1.2) ══════════ */
 
   // Local-only mode: do not initialize remote AI clients.
@@ -156,10 +206,12 @@ function init() {
   const btnImportImage = document.getElementById('btn-import-image');
   const btnImageTo3D = document.getElementById('btn-image-to-3d');
   const btnImportWeb = document.getElementById('btn-import-web');
+  const btnImportVideo = document.getElementById('btn-import-video');
   if (btnImport) btnImport.addEventListener('click', () => modelImporter.openModelPicker());
   if (btnImportImage) btnImportImage.addEventListener('click', () => modelImporter.openImagePlanePicker());
   if (btnImageTo3D) btnImageTo3D.addEventListener('click', () => modelImporter.openImage3DPicker());
   if (btnImportWeb) btnImportWeb.addEventListener('click', () => modelImporter.openWebPlaneDialog());
+  if (btnImportVideo) btnImportVideo.addEventListener('click', () => modelImporter.openVideoPicker());
 
   /* ══ 6c. Export buttons (STL + HTML) ════════════════════════ */
 
@@ -169,7 +221,9 @@ function init() {
 
   if (btnExportSTL) {
     btnExportSTL.addEventListener('click', () => {
-      const filename = prompt('Export STL as:', 'scene') ?? 'scene';
+      const selected = selectionManager.getPrimary();
+      const defaultName = selected?.name || 'scene';
+      const filename = prompt('Export STL as:', defaultName) ?? defaultName;
       if (filename) {
         EventBus.emit('analytics:event', {
           name: 'export_clicked',
@@ -177,9 +231,12 @@ function init() {
             source: 'button',
             exportType: 'stl',
             filename,
+            scope: selected ? 'selected-object' : 'scene',
           },
         });
-        const result = stlExporter.export(filename);
+        const result = selected
+          ? objectExporter.exportSTL({ ...selected, name: filename.replace(/\.stl$/i, '') || selected.name })
+          : stlExporter.export(filename);
         showToast(result.message, result.success ? 'info' : 'warn');
       }
     });
@@ -249,7 +306,7 @@ function init() {
   /* ══ 7. UI Components ══════════════════════════════════════ */
 
   const terminal         = new Terminal(commandParser);
-  const propertiesPanel  = new PropertiesPanel(commandParser, selectionManager, cameraManager);
+  const propertiesPanel  = new PropertiesPanel(commandParser, selectionManager, cameraManager, objectExporter);
   const sceneHierarchy   = new SceneHierarchy(objectManager, selectionManager, commandParser);
   projectLibrary         = new ProjectLibrary(commandParser, () => {
     try {
@@ -258,6 +315,23 @@ function init() {
       return null;
     }
   });
+
+  // CAD module (phase 1): centralized CAD state + modular tools + contextual UI.
+  initCadModule({
+    commandParser,
+    selectionManager,
+    objectManager,
+  });
+
+  // Patch cadState into ExportManager now that it's been created by initCadModule
+  exportManager._cad = window.renderHubCadState ?? null;
+
+  // Wire "Export ▾" toolbar button to the unified ExportPanel
+  const btnExportUnified = document.getElementById('btn-export-unified');
+  if (btnExportUnified) {
+    btnExportUnified.addEventListener('click', () => exportPanel.toggle());
+  }
+
   const viewportOverlay  = new ViewportOverlay(commandParser, objectManager, selectionManager);
   setupMobileLayout();
   setupExportPreview();
@@ -277,6 +351,7 @@ function init() {
 
     // Update dynamic world ambience
     environmentManager.update(delta, now);
+    objectAnimator.update(delta, now);
     scenarioDirector.update(delta, now);
     modelImporter.update();
 

@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>RenderHub 3D Editor</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="style.css" />
@@ -26,20 +29,23 @@
       <button id="btn-mobile-terminal" class="btn-header mobile-only" aria-label="Toggle terminal">Term</button>
       <button id="btn-undo" class="btn-header btn-undo" title="Undo (Ctrl+Z)">&#8592; Undo</button>
       <button id="btn-redo" class="btn-header btn-redo" title="Redo (Ctrl+Y)">&#8594; Redo</button>
-      <button id="btn-import" class="btn-header btn-import" title="Import GLTF / GLB / OBJ / STL model">&#8679; Import 3D</button>
-      <button id="btn-import-image" class="btn-header btn-import-image" title="Import image as flat textured plane">🖼 Image Plane</button>
-      <button id="btn-image-to-3d" class="btn-header btn-image-to-3d" title="Generate 3D model from image via AI backend (fallback: local relief)">🧠 Image→3D AI</button>
-      <button id="btn-import-web" class="btn-header btn-import-web" title="Create an interactive local web plane from dropped HTML/file/folder">🌐 Web Plane</button>
-      <button id="btn-save" class="btn-header btn-save" title="Save scene as .hub file">&#128190; Save</button>
-      <button id="btn-load" class="btn-header btn-load" title="Load .hub scene file">&#128194; Load</button>
+      <button id="btn-import" class="btn-header btn-import" title="Import GLTF / GLB / OBJ / STL model">Import 3D</button>
+      <button id="btn-import-image" class="btn-header btn-import-image" title="Import image as flat textured plane">Image Plane</button>
+      <button id="btn-image-to-3d" class="btn-header btn-image-to-3d" title="Generate 3D model from image via AI backend (fallback: local relief)">Image to 3D</button>
+      <button id="btn-import-web" class="btn-header btn-import-web" title="Create an interactive local web plane from dropped HTML/file/folder">Web Plane</button>
+      <button id="btn-import-video" class="btn-header btn-import-video" title="Import MP4/WebM video as a 3D video plane">Video Plane</button>
+      <button id="btn-save" class="btn-header btn-save" title="Save scene as .hub file">Save</button>
+      <button id="btn-load" class="btn-header btn-load" title="Load .hub scene file">Load</button>
       <select id="export-preset" class="header-select" title="Export preset vertical">
         <option value="agency">Agency</option>
         <option value="ecommerce">Ecommerce</option>
         <option value="realestate">Real Estate</option>
       </select>
+      <button id="btn-export-unified" class="btn-header btn-accent btn-export-unified" title="Export scene (STL, GLTF, JSON, HTML)">Export &#9660;</button>
       <button id="btn-export-stl" class="btn-header btn-accent">Export STL</button>
-      <button id="btn-export-html" class="btn-header btn-accent" title="Export as interactive HTML">🌐 Export HTML</button>
-      <button id="btn-demo" class="btn-header" title="Start guided demo">▶ Demo</button>
+      <button id="btn-export-html" class="btn-header btn-accent" title="Export as interactive HTML">Export HTML</button>
+      <button id="btn-clear-all" class="btn-header btn-danger" title="Delete all objects in scene">Clear All</button>
+      <button id="btn-demo" class="btn-header" title="Start guided demo">Demo</button>
     </div>
   </header>
 
@@ -54,7 +60,7 @@
     <!-- LEFT PANEL: Scene Hierarchy -->
     <aside id="hierarchy-panel">
       <div class="panel-header">
-        <span>Scene</span>
+        <span>Feature Tree</span>
         <span id="obj-count" class="panel-count">0</span>
       </div>
       <div id="hierarchy-list"></div>
@@ -118,10 +124,38 @@
 
           <!-- View mode buttons -->
           <div id="view-buttons">
-            <button class="btn-view active" data-view="perspective">Persp</button>
-            <button class="btn-view" data-view="top">Top</button>
-            <button class="btn-view" data-view="front">Front</button>
-            <button class="btn-view" data-view="right">Right</button>
+            <button class="btn-view active" data-view="perspective" title="Perspective view">
+              <span class="view-cube v-perspective" aria-hidden="true">
+                <span class="face face-front"></span>
+                <span class="face face-top"></span>
+                <span class="face face-right"></span>
+              </span>
+              <span class="view-label">Persp</span>
+            </button>
+            <button class="btn-view" data-view="top" title="Top view">
+              <span class="view-cube v-top" aria-hidden="true">
+                <span class="face face-front"></span>
+                <span class="face face-top"></span>
+                <span class="face face-right"></span>
+              </span>
+              <span class="view-label">Top</span>
+            </button>
+            <button class="btn-view" data-view="front" title="Front view">
+              <span class="view-cube v-front" aria-hidden="true">
+                <span class="face face-front"></span>
+                <span class="face face-top"></span>
+                <span class="face face-right"></span>
+              </span>
+              <span class="view-label">Front</span>
+            </button>
+            <button class="btn-view" data-view="right" title="Right view">
+              <span class="view-cube v-right" aria-hidden="true">
+                <span class="face face-front"></span>
+                <span class="face face-top"></span>
+                <span class="face face-right"></span>
+              </span>
+              <span class="view-label">Right</span>
+            </button>
           </div>
 
           <!-- Transform mode buttons -->
@@ -161,7 +195,7 @@
           <div id="shortcuts-panel" class="hidden">
             <div class="shortcuts-title">Keyboard Shortcuts</div>
             <div class="shortcuts-grid">
-              <div><kbd>G</kbd> Move mode</div>
+              <div><kbd>M</kbd> Move mode</div>
               <div><kbd>R</kbd> Rotate mode</div>
               <div><kbd>S</kbd> Scale mode</div>
               <div><kbd>W</kbd> Local/World</div>
@@ -327,6 +361,10 @@
         <!-- Actions -->
         <div class="panel-section" id="section-actions">
           <div class="panel-header">Actions</div>
+          <div class="action-buttons">
+            <button id="btn-export-object-stl" class="btn-action btn-action-export">Export STL</button>
+            <button id="btn-export-object-glb" class="btn-action btn-action-export">Export GLB</button>
+          </div>
           <div class="action-buttons">
             <button id="btn-duplicate" class="btn-action">Duplicate</button>
             <button id="btn-focus" class="btn-action">Focus</button>

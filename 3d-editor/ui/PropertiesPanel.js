@@ -13,11 +13,13 @@ export class PropertiesPanel {
    * @param {import('../commands/CommandParser.js').CommandParser}   commandParser
    * @param {import('../core/SelectionManager.js').SelectionManager} selectionManager
    * @param {import('../core/Camera.js').CameraManager}              cameraManager
+   * @param {import('../export/ObjectExporter.js').ObjectExporter|null} objectExporter
    */
-  constructor(commandParser, selectionManager, cameraManager) {
+  constructor(commandParser, selectionManager, cameraManager, objectExporter = null) {
     this.parser = commandParser;
     this.sel    = selectionManager;
     this.cam    = cameraManager;
+    this.objectExporter = objectExporter;
 
     // Guard against circular updates
     this._isRefreshing = false;
@@ -56,6 +58,8 @@ export class PropertiesPanel {
     this._metalVal     = document.getElementById('prop-metalness-val');
 
     // Actions
+    this._btnExportSTL = document.getElementById('btn-export-object-stl');
+    this._btnExportGLB = document.getElementById('btn-export-object-glb');
     this._btnDuplicate = document.getElementById('btn-duplicate');
     this._btnFocus     = document.getElementById('btn-focus');
     this._btnDelete    = document.getElementById('btn-delete');
@@ -153,6 +157,23 @@ export class PropertiesPanel {
     }
 
     // Action buttons
+    if (this._btnExportSTL) {
+      this._btnExportSTL.addEventListener('click', () => {
+        const rec = this.sel.getPrimary();
+        if (!rec || !this.objectExporter) return;
+        const res = this.objectExporter.exportSTL(rec);
+        EventBus.emit('terminal:log', { type: res.success ? 'info' : 'error', message: res.message });
+      });
+    }
+    if (this._btnExportGLB) {
+      this._btnExportGLB.addEventListener('click', async () => {
+        const rec = this.sel.getPrimary();
+        if (!rec || !this.objectExporter) return;
+        EventBus.emit('terminal:log', { type: 'info', message: `Exportando GLB "${rec.name}"…` });
+        const res = await this.objectExporter.exportGLB(rec);
+        EventBus.emit('terminal:log', { type: res.success ? 'info' : 'error', message: res.message });
+      });
+    }
     if (this._btnDuplicate) this._btnDuplicate.addEventListener('click', () => this.parser.execute('duplicate'));
     if (this._btnFocus)     this._btnFocus.addEventListener('click',     () => this.parser.execute('focus'));
     if (this._btnDelete)    this._btnDelete.addEventListener('click',    () => this.parser.execute('delete'));

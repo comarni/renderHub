@@ -98,6 +98,19 @@ export class ModelImporter {
     input.click();
   }
 
+  openVideoPicker() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv,.mov';
+
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      if (file) this._loadVideoFileAsPlane(file);
+    });
+
+    input.click();
+  }
+
   openWebPlaneDialog() {
     const useFolder = confirm('Importar carpeta web completa (OK) o solo un archivo HTML (Cancelar)?');
     if (useFolder) {
@@ -180,10 +193,17 @@ export class ModelImporter {
 
         for (const file of files) {
           const ext = file.name?.split('.').pop()?.toLowerCase() || '';
-          const isNativeImportable = /\.(gltf|glb|obj|stl|png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+          const isNativeImportable = /\.(gltf|glb|obj|stl|png|jpe?g|webp|gif|bmp)$/i.test(file.name)
+            || /^(model\/(stl|obj|gltf|gltf\+json)|application\/sla)/i.test(file.type || '');
 
           if (isNativeImportable) {
             this._importFile(file, { imageMode });
+            importedAny = true;
+            continue;
+          }
+
+          if (/\.(mp4|webm|mov|ogv|ogg)$/i.test(file.name) || (file.type && file.type.startsWith('video/'))) {
+            this._loadVideoFileAsPlane(file);
             importedAny = true;
             continue;
           }
@@ -303,6 +323,11 @@ export class ModelImporter {
       } else {
         this._loadImageAs3D(file, base, file.name);
       }
+      return;
+    }
+
+    if (['mp4', 'webm', 'ogg', 'ogv', 'mov'].includes(ext)) {
+      this._loadVideoFileAsPlane(file);
       return;
     }
 
@@ -480,7 +505,14 @@ export class ModelImporter {
         texture,
         width: planeWidth,
         height: planeHeight,
+        source: { mode: 'image', value: url },
       });
+
+      if (record?.mesh?.userData) {
+        record.mesh.userData.webAssetUrls = [url];
+      }
+
+      this._ensureWebSurface(record);
 
       if (record?.id && this.selection) {
         this.selection.selectByIds([record.id], false);
@@ -489,7 +521,6 @@ export class ModelImporter {
         this.camera.focusOn(record.mesh);
       }
 
-      URL.revokeObjectURL(url);
       EventBus.emit('terminal:log', {
         type: 'info',
         message: `✓ Imported image plane "${originalName}" as "${name}"`,
@@ -549,6 +580,37 @@ export class ModelImporter {
     EventBus.emit('terminal:log', {
       type: 'info',
       message: `✓ Imported HTML as interactive web plane "${name}" (source: "${originalName}")`,
+    });
+    EventBus.emit('state:changed', { type: 'scene' });
+  }
+
+  _loadVideoFileAsPlane(file) {
+    const blobUrl = URL.createObjectURL(file);
+    this._blobAssetUrls.add(blobUrl);
+
+    const baseName = file.name.replace(/\.[^.]+$/, '');
+    const name = this._uniqueName(baseName);
+    const { width, height } = this._webPlaneDimensions(16 / 9);
+
+    const record = this.objs.addVideoPlane({
+      name,
+      width,
+      height,
+      source: { mode: 'video', value: blobUrl },
+    });
+
+    this._ensureWebSurface(record);
+
+    if (record?.id && this.selection) {
+      this.selection.selectByIds([record.id], false);
+    }
+    if (record?.mesh && this.camera) {
+      this.camera.focusOn(record.mesh);
+    }
+
+    EventBus.emit('terminal:log', {
+      type: 'info',
+      message: `✓ Video importado "${file.name}" como plano interactivo "${name}"`,
     });
     EventBus.emit('state:changed', { type: 'scene' });
   }
@@ -654,40 +716,189 @@ export class ModelImporter {
     return { width, height };
   }
 
-  _ensureWebSurface(record) {
-    if (!record || record.type !== 'web' || this._webSurfaces.has(record.id)) return;
-
-    const source = record.mesh.userData?.webSource || { mode: 'url', value: 'about:blank' };
-    const width = record.mesh.geometry?.parameters?.width || 2.4;
-    const height = record.mesh.geometry?.parameters?.height || 1.35;
-
+  _buildPlaneWindowShell(record, width, height, title) {
     const element = document.createElement('div');
     element.className = 'web-plane-surface';
     element.style.width = `${Math.round(width * this._pixelsPerUnit)}px`;
     element.style.height = `${Math.round(height * this._pixelsPerUnit)}px`;
     element.style.pointerEvents = 'auto';
+    element.dataset.kind = record.type;
 
-    const iframe = document.createElement('iframe');
-    iframe.className = 'web-plane-frame';
-    iframe.style.pointerEvents = 'auto';
-    iframe.setAttribute('referrerpolicy', 'no-referrer');
-    iframe.setAttribute('allow', 'clipboard-read; clipboard-write; fullscreen');
+    const windowBar = document.createElement('div');
+    windowBar.className = 'web-plane-windowbar';
 
-    if (source.mode === 'html') {
-      // Keep full interactivity for local dropped HTML and avoid sandbox escape warning.
-      iframe.srcdoc = source.value;
-      iframe.addEventListener('load', () => {
-        this._autoFitWebPlaneToIframeContent(record, iframe, element);
+    const traffic = document.createElement('div');
+    traffic.className = 'web-plane-window-dots';
+
+    const dotClose = document.createElement('button');
+    dotClose.type = 'button';
+    dotClose.className = 'web-plane-window-dot close';
+    dotClose.title = 'Cerrar plano';
+
+    const dotMin = document.createElement('button');
+    dotMin.type = 'button';
+    dotMin.className = 'web-plane-window-dot minimize';
+    dotMin.title = 'Minimizar / restaurar';
+
+    const dotFocus = document.createElement('button');
+    dotFocus.type = 'button';
+    dotFocus.className = 'web-plane-window-dot focus';
+    dotFocus.title = 'Enfocar plano';
+
+    traffic.append(dotClose, dotMin, dotFocus);
+
+    const titleLabel = document.createElement('div');
+    titleLabel.className = 'web-plane-window-title';
+    titleLabel.textContent = title || record.name || 'Plane';
+
+    const actions = document.createElement('div');
+    actions.className = 'web-plane-window-actions';
+
+    const rotateBtn = document.createElement('button');
+    rotateBtn.type = 'button';
+    rotateBtn.className = 'web-plane-action-btn rotate';
+    rotateBtn.title = 'Rotar plano';
+    rotateBtn.textContent = '⟳';
+
+    const expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'web-plane-action-btn expand';
+    expandBtn.title = 'Seleccionar y enfocar';
+    expandBtn.textContent = '□';
+
+    actions.append(rotateBtn, expandBtn);
+    windowBar.append(traffic, titleLabel, actions);
+
+    const content = document.createElement('div');
+    content.className = 'web-plane-content';
+
+    element.append(windowBar, content);
+
+    return {
+      element,
+      windowBar,
+      content,
+      titleLabel,
+      controls: {
+        dotClose,
+        dotMin,
+        dotFocus,
+        rotateBtn,
+        expandBtn,
+      },
+    };
+  }
+
+  _ensureWebSurface(record) {
+    if (!record || (record.type !== 'web' && record.type !== 'video' && record.type !== 'image') || this._webSurfaces.has(record.id)) return;
+
+    const source = record.mesh.userData?.webSource || { mode: 'url', value: 'about:blank' };
+    const width = record.mesh.geometry?.parameters?.width || 2.4;
+    const height = record.mesh.geometry?.parameters?.height || 1.35;
+
+    const shell = this._buildPlaneWindowShell(record, width, height, record.name);
+    const { element, content, windowBar, controls } = shell;
+
+    const interaction = this._attachWebPlaneInteraction(record, element, {
+      moveTarget: windowBar,
+      rotateTarget: controls.rotateBtn,
+    });
+
+    controls.dotClose.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      if (this.selection?.selected?.has(record.id)) this.selection.deselectAll();
+      this.objs.delete(record.id);
+    });
+
+    controls.dotFocus.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      if (this.selection) this.selection.selectByIds([record.id], false);
+      if (this.camera) this.camera.focusOn(record.mesh);
+    });
+
+    controls.expandBtn.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      if (this.selection) this.selection.selectByIds([record.id], false);
+      if (this.camera) this.camera.focusOn(record.mesh);
+    });
+
+    [controls.dotClose, controls.dotMin, controls.dotFocus, controls.expandBtn].forEach((btn) => {
+      btn.addEventListener('pointerdown', (evt) => {
+        evt.stopPropagation();
       });
+    });
+
+    controls.dotMin.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+
+      const params = record.mesh.geometry?.parameters || {};
+      const minimized = !element.classList.contains('is-minimized');
+
+      if (minimized) {
+        record.mesh.userData.webRestoreSize = { width: params.width || width, height: params.height || height };
+        element.classList.add('is-minimized');
+        this._resizeWebPlane(record.mesh, params.width || width, 0.28);
+      } else {
+        element.classList.remove('is-minimized');
+        const restore = record.mesh.userData.webRestoreSize || { width, height };
+        this._resizeWebPlane(record.mesh, restore.width, restore.height);
+      }
+    });
+
+    if (source.mode === 'video') {
+      const video = document.createElement('video');
+      video.className = 'web-plane-video';
+      video.src = source.value;
+      video.controls = true;
+      video.loop = true;
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.style.cssText = 'width:100%;height:100%;display:block;object-fit:contain;background:#000;pointer-events:auto;';
+
+      video.addEventListener('loadedmetadata', () => {
+        const vw = video.videoWidth || 1920;
+        const vh = video.videoHeight || 1080;
+        const aspect = Math.max(0.4, Math.min(2.6, vw / Math.max(1, vh)));
+        const { width: fw, height: fh } = this._webPlaneDimensions(aspect);
+        this._resizeWebPlane(record.mesh, fw, fh);
+        element.style.width = `${Math.round(fw * this._pixelsPerUnit)}px`;
+        element.style.height = `${Math.round(fh * this._pixelsPerUnit)}px`;
+      });
+
+      content.appendChild(video);
+    } else if (source.mode === 'image') {
+      const img = document.createElement('img');
+      img.className = 'web-plane-image';
+      img.src = source.value;
+      img.alt = record.name || 'Image plane';
+      img.draggable = false;
+      content.appendChild(img);
     } else {
-      // URLs are disabled in local-only mode, but keep safe defaults if re-enabled.
-      iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
-      iframe.src = source.value;
+      const iframe = document.createElement('iframe');
+      iframe.className = 'web-plane-frame';
+      iframe.style.pointerEvents = 'auto';
+      iframe.setAttribute('referrerpolicy', 'no-referrer');
+      iframe.setAttribute('allow', 'clipboard-read; clipboard-write; fullscreen');
+
+      if (source.mode === 'html') {
+        iframe.srcdoc = source.value;
+        iframe.addEventListener('load', () => {
+          if (!element.classList.contains('is-minimized')) {
+            this._autoFitWebPlaneToIframeContent(record, iframe, element);
+          }
+        });
+      } else {
+        iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
+        iframe.src = source.value;
+      }
+
+      content.appendChild(iframe);
     }
-
-    const interaction = this._attachWebPlaneInteraction(record, element, iframe);
-
-    element.appendChild(iframe);
 
     const cssObject = new CSS3DObject(element);
     cssObject.userData.editorRuntimeWeb = true;
@@ -699,13 +910,13 @@ export class ModelImporter {
       cssObject,
       element,
       baseScale: 1 / this._pixelsPerUnit,
-      assetUrls: record.mesh.userData?.webAssetUrls || [],
+      assetUrls: [],
       disposeInteraction: interaction?.dispose || null,
     });
   }
 
   _syncWebSurfaces() {
-    const webRecords = this.objs.list().filter(r => r.type === 'web');
+    const webRecords = this.objs.list().filter(r => r.type === 'web' || r.type === 'video' || r.type === 'image');
 
     // Auto-register new web records (including duplicates or scene loads).
     webRecords.forEach(record => this._ensureWebSurface(record));
@@ -740,7 +951,7 @@ export class ModelImporter {
         this._tmpScale.z * entry.baseScale
       );
 
-      // Keep iframe a tiny bit in front of the mesh to avoid z-fighting visual mismatch.
+      // Keep the window frame a tiny bit in front of the mesh.
       this._tmpNormal.set(0, 0, 1).applyQuaternion(entry.cssObject.quaternion).normalize();
       entry.cssObject.position.addScaledVector(this._tmpNormal, 0.0025);
 
@@ -846,10 +1057,12 @@ export class ModelImporter {
     return n === 1 ? trunc : `${trunc}.${String(n).padStart(3, '0')}`;
   }
 
-  _attachWebPlaneInteraction(record, element, iframe) {
+  _attachWebPlaneInteraction(record, element, options = {}) {
     if (!record?.mesh || !element) return null;
 
     const mesh = record.mesh;
+    const moveTarget = options.moveTarget || element;
+    const rotateTarget = options.rotateTarget || null;
 
     const moveFrame = document.createElement('div');
     moveFrame.className = 'web-plane-move-frame';
@@ -881,6 +1094,13 @@ export class ModelImporter {
       makeScaleHandle('bl'),
       makeScaleHandle('br'),
     ];
+
+    const rotateHandle = document.createElement('button');
+    rotateHandle.type = 'button';
+    rotateHandle.className = 'web-plane-rotate-handle';
+    rotateHandle.title = 'Rotar plano';
+    rotateHandle.textContent = '⟳';
+    moveFrame.appendChild(rotateHandle);
 
     element.appendChild(moveFrame);
 
@@ -989,13 +1209,55 @@ export class ModelImporter {
       window.addEventListener('pointerup', onUp);
     };
 
+    const startRotateDrag = (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+
+      if (this.selection) {
+        this.selection.selectByIds([record.id], false);
+      }
+
+      const startX = evt.clientX;
+      const startRotation = mesh.rotation.z;
+
+      this.camera.controls.enabled = false;
+
+      const onMove = (moveEvt) => {
+        const dx = moveEvt.clientX - startX;
+        mesh.rotation.z = startRotation + dx * 0.01;
+        EventBus.emit('state:changed', { type: 'transform' });
+      };
+
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        this.camera.controls.enabled = true;
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    };
+
+    const selectPlane = (evt) => {
+      evt.stopPropagation();
+      if (this.selection) this.selection.selectByIds([record.id], false);
+    };
+
     moveHandles.forEach(h => h.addEventListener('pointerdown', startMoveDrag));
     scaleHandles.forEach(h => h.addEventListener('pointerdown', startScaleDrag));
+    moveTarget.addEventListener('pointerdown', startMoveDrag);
+    moveTarget.addEventListener('click', selectPlane);
+    rotateHandle.addEventListener('pointerdown', startRotateDrag);
+    if (rotateTarget) rotateTarget.addEventListener('pointerdown', startRotateDrag);
 
     return {
       dispose: () => {
         moveHandles.forEach(h => h.removeEventListener('pointerdown', startMoveDrag));
         scaleHandles.forEach(h => h.removeEventListener('pointerdown', startScaleDrag));
+        moveTarget.removeEventListener('pointerdown', startMoveDrag);
+        moveTarget.removeEventListener('click', selectPlane);
+        rotateHandle.removeEventListener('pointerdown', startRotateDrag);
+        if (rotateTarget) rotateTarget.removeEventListener('pointerdown', startRotateDrag);
       },
     };
   }

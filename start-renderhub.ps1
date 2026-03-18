@@ -79,7 +79,7 @@ $triposrProc = Start-LoggedProcess -Name 'triposr' -FilePath $tripoPython -Argum
 
 $aiProc = Start-LoggedProcess -Name 'ai-server' -FilePath 'npm.cmd' -ArgumentList @('run', 'dev') -WorkingDirectory (Join-Path $root 'ai-server')
 
-$frontProc = Start-LoggedProcess -Name 'frontend' -FilePath 'npx.cmd' -ArgumentList @('http-server', '.', '-p', '5500', '--cors') -WorkingDirectory (Join-Path $root '3d-editor')
+$frontProc = Start-LoggedProcess -Name 'frontend' -FilePath 'npx.cmd' -ArgumentList @('http-server', '.', '-p', '5500', '--cors', '-c-1') -WorkingDirectory (Join-Path $root '3d-editor')
 
 Start-Sleep -Seconds 2
 

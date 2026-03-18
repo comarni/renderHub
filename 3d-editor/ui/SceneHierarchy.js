@@ -25,6 +25,11 @@ export class SceneHierarchy {
     this.sel    = selectionManager;
     this.parser = commandParser;
 
+    this._operations = [];
+    this._suppressed = new Set();
+    this._undone = new Set();
+    this._expanded = new Set();
+
     this._listEl  = document.getElementById('hierarchy-list');
     this._countEl = document.getElementById('obj-count');
 
@@ -34,6 +39,15 @@ export class SceneHierarchy {
         const type = btn.dataset.type;
         if (type) this.parser.execute(`add ${type}`);
       });
+    });
+
+    EventBus.on('cad:state:changed', (snapshot = {}) => {
+      this._operations = Array.isArray(snapshot.operations) ? snapshot.operations : [];
+      this._suppressed = new Set(snapshot.suppressedOperationIds || []);
+      this._undone = new Set(snapshot.undoneOperationIds || []);
+      const lastOp = this._operations[this._operations.length - 1];
+      if (lastOp?.objectId) this._expanded.add(lastOp.objectId);
+      this._refresh();
     });
 
     EventBus.on('state:changed', () => this._refresh());
@@ -50,6 +64,12 @@ export class SceneHierarchy {
 
     this._listEl.innerHTML = '';
 
+    const alive = new Set(objects.map(o => o.id));
+    this._operations = this._operations.filter((op) => alive.has(op.objectId));
+    [...this._expanded].forEach((id) => {
+      if (!alive.has(id)) this._expanded.delete(id);
+    });
+
     if (objects.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'hierarchy-empty';
@@ -61,10 +81,28 @@ export class SceneHierarchy {
 
     objects.forEach(record => {
       const isSelected = this.sel.selected.has(record.id);
+      const ops = this._operations.filter((op) => op.objectId === record.id);
+      const isExpanded = this._expanded.has(record.id);
+
+      const node = document.createElement('div');
+      node.className = 'hierarchy-node';
 
       const item = document.createElement('div');
       item.className = 'hierarchy-item' + (isSelected ? ' selected' : '');
       item.dataset.id = record.id;
+
+      const expander = document.createElement('button');
+      expander.type = 'button';
+      expander.className = 'hierarchy-expander' + (ops.length ? '' : ' disabled');
+      expander.textContent = ops.length ? (isExpanded ? '▾' : '▸') : '·';
+      expander.title = ops.length ? 'Show operations' : 'No operations yet';
+      expander.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!ops.length) return;
+        if (this._expanded.has(record.id)) this._expanded.delete(record.id);
+        else this._expanded.add(record.id);
+        this._refresh();
+      });
 
       const icon = document.createElement('span');
       icon.className = 'type-icon';
@@ -75,6 +113,7 @@ export class SceneHierarchy {
       name.textContent = record.name;
       name.title = record.name; // tooltip for long names
 
+      item.appendChild(expander);
       item.appendChild(icon);
       item.appendChild(name);
 
@@ -94,8 +133,98 @@ export class SceneHierarchy {
         this._startInlineRename(item, name, record);
       });
 
-      this._listEl.appendChild(item);
+      node.appendChild(item);
+
+      if (ops.length && isExpanded) {
+        const opList = document.createElement('div');
+        opList.className = 'hierarchy-op-list';
+        ops.slice(-18).forEach((op) => {
+          const opRow = document.createElement('div');
+          opRow.className = 'hierarchy-op-item'
+            + (this._suppressed.has(op.id) ? ' suppressed' : '')
+            + (this._undone.has(op.id) ? ' undone' : '');
+
+          const opIcon = document.createElement('span');
+          opIcon.className = 'hierarchy-op-icon';
+          opIcon.textContent = this._opIcon(op.type);
+
+          const opLabel = document.createElement('span');
+          opLabel.className = 'hierarchy-op-label';
+          opLabel.textContent = op.label;
+
+          const opToggle = document.createElement('button');
+          opToggle.type = 'button';
+          opToggle.className = 'hierarchy-op-toggle';
+          opToggle.textContent = this._suppressed.has(op.id) ? '✕' : '✓';
+          opToggle.title = this._suppressed.has(op.id) ? 'Re-enable operation' : 'Suppress operation';
+          opToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            EventBus.emit('cad:operation:toggle-suppress', { operationId: op.id });
+          });
+
+          const opUp = document.createElement('button');
+          opUp.type = 'button';
+          opUp.className = 'hierarchy-op-order';
+          opUp.textContent = '↑';
+          opUp.title = 'Move operation up';
+          opUp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            EventBus.emit('cad:operation:move', { operationId: op.id, direction: 'up' });
+          });
+
+          const opDown = document.createElement('button');
+          opDown.type = 'button';
+          opDown.className = 'hierarchy-op-order';
+          opDown.textContent = '↓';
+          opDown.title = 'Move operation down';
+          opDown.addEventListener('click', (e) => {
+            e.stopPropagation();
+            EventBus.emit('cad:operation:move', { operationId: op.id, direction: 'down' });
+          });
+
+          let paramInput = null;
+          if (op.type === 'extrude') {
+            paramInput = document.createElement('input');
+            paramInput.type = 'number';
+            paramInput.step = '0.01';
+            paramInput.className = 'hierarchy-op-param';
+            const distance = Number(op?.payload?.distance);
+            if (Number.isFinite(distance)) {
+              paramInput.value = distance.toFixed(3);
+            }
+            paramInput.title = 'Extrude distance';
+            paramInput.addEventListener('click', (e) => e.stopPropagation());
+            paramInput.addEventListener('change', () => {
+              const value = Number(paramInput.value);
+              if (!Number.isFinite(value)) return;
+              EventBus.emit('cad:operation:update-param', {
+                operationId: op.id,
+                patch: { distance: value },
+              });
+            });
+          }
+
+          opRow.appendChild(opIcon);
+          opRow.appendChild(opLabel);
+          if (paramInput) opRow.appendChild(paramInput);
+          opRow.appendChild(opUp);
+          opRow.appendChild(opDown);
+          opRow.appendChild(opToggle);
+          opList.appendChild(opRow);
+        });
+        node.appendChild(opList);
+      }
+
+      this._listEl.appendChild(node);
     });
+  }
+
+  _opIcon(type) {
+    if (type === 'create') return '■';
+    if (type === 'transform') return '⤡';
+    if (type === 'extrude') return '△';
+    if (type === 'material') return '◍';
+    return '•';
   }
 
   _startInlineRename(item, nameSpan, record) {

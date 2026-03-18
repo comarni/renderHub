@@ -1,0 +1,99 @@
+{
+  "name": "3D Search - Thingiverse",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "tv-trigger-001",
+      "name": "Trigger Sub-Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.thingiverse.com/search/{{ $json.query }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "type", "value": "things" },
+            { "name": "per_page", "value": "={{ $json.limit || 5 }}" },
+            { "name": "sort", "value": "relevant" },
+            { "name": "page", "value": "1" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "tv-http-001",
+      "name": "GET Thingiverse Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "THINGIVERSE_CRED_ID",
+          "name": "Thingiverse Bearer Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.thingiverse.com/things/{{ $json.id }}/files",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "id": "tv-files-001",
+      "name": "GET Files por Thing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 180],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "THINGIVERSE_CRED_ID",
+          "name": "Thingiverse Bearer Token"
+        }
+      },
+      "notes": "Llamada individual por thing para obtener URL de descarga STL. En producción, iterar sobre los hits."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalizar respuesta de Thingiverse al formato RenderHub\nconst hits = $('GET Thingiverse Search').first().json.hits || [];\nconst query = $('Trigger Sub-Workflow').first().json.query || '';\n\nconst normalized = hits.map(item => ({\n  platform: 'Thingiverse',\n  id: String(item.id),\n  name: item.name || '',\n  description: (item.description || '').replace(/<[^>]*>/g, '').slice(0, 300),\n  thumbnail_url: item.thumbnail || item.preview_image || '',\n  page_url: item.public_url || `https://www.thingiverse.com/thing:${item.id}`,\n  download_url: `https://www.thingiverse.com/thing:${item.id}/zip`,\n  stl_direct: true,\n  files_endpoint: `https://api.thingiverse.com/things/${item.id}/files`,\n  creator: item.creator?.name || '',\n  likes: item.like_count || 0,\n  downloads: item.download_count || 0,\n  tags: (item.tags || []).map(t => t.name || t).slice(0, 8)\n}));\n\nreturn {\n  platform: 'Thingiverse',\n  query,\n  count: normalized.length,\n  results: normalized\n};"
+      },
+      "id": "tv-code-001",
+      "name": "Normalizar Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Trigger Sub-Workflow": {
+      "main": [
+        [{ "node": "GET Thingiverse Search", "type": "main", "index": 0 }]
+      ]
+    },
+    "GET Thingiverse Search": {
+      "main": [
+        [{ "node": "Normalizar Resultados", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "thingiverse-search-v1",
+  "meta": {
+    "instanceId": "renderhub-thingiverse-search",
+    "notes": "INPUT esperado: { query: string, limit?: number }\nOUTPUT: { platform, query, count, results[] }\nCredencial requerida: Bearer Token desde https://www.thingiverse.com/developers"
+  },
+  "tags": ["renderhub", "3d", "thingiverse", "search", "stl"]
+}

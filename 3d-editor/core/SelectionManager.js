@@ -47,10 +47,14 @@ export class SelectionManager {
     this._pointerDown = false;
     this._pointerMoved = false;
     this._pointerDownPos = { x: 0, y: 0 };
+    this._boxSelectState = null;
+    this._isBoxSelecting = false;
     this._dragState = null;
     this._dragPlane = new THREE.Plane();
     this._dragStartWorld = new THREE.Vector3();
     this._dragCurrentWorld = new THREE.Vector3();
+    this._snapProvider = null;
+    this._transformSnapState = null;
 
     // Pivot group used for multi-object transform
     this._pivotGroup = null;
@@ -87,6 +91,31 @@ export class SelectionManager {
     // CRITICAL: disable OrbitControls while dragging gizmo
     this.transformControls.addEventListener('dragging-changed', (e) => {
       this.cam.controls.enabled = !e.value;
+      if (e.value && this._transformMode === 'translate') {
+        this._beginTransformSnap();
+      }
+      if (!e.value) {
+        this._transformSnapState = null;
+        this._snapProvider?.clearFeedback?.();
+        const rec = this.getPrimary();
+        if (rec?.id) {
+          EventBus.emit('cad:operation:recorded', {
+            id: `cadop_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+            label: `${this._transformMode} ${rec.name}`,
+            type: 'transform',
+            objectId: rec.id,
+            payload: {
+              after: {
+                position: rec.mesh.position.toArray(),
+                rotation: [rec.mesh.rotation.x, rec.mesh.rotation.y, rec.mesh.rotation.z],
+                scale: rec.mesh.scale.toArray(),
+                visible: rec.mesh.visible,
+              },
+            },
+            timestamp: Date.now(),
+          });
+        }
+      }
     });
 
     // Emit state change when user drags a gizmo
@@ -103,6 +132,17 @@ export class SelectionManager {
     window.addEventListener('pointermove', this._onPointerMove);
     this._domElement.addEventListener('pointerup', this._onPointerUp);
     window.addEventListener('pointerup', this._onPointerUp);
+    this._onContextMenu = this._handleContextMenu.bind(this);
+    this._domElement.addEventListener('contextmenu', this._onContextMenu);
+
+    this._selectionBoxEl = document.createElement('div');
+    this._selectionBoxEl.className = 'selection-box';
+    const wrapper = this._domElement.parentElement || document.body;
+    wrapper.appendChild(this._selectionBoxEl);
+  }
+
+  setSnapProvider(provider) {
+    this._snapProvider = provider || null;
   }
 
   /* ── Transform mode ───────────────────────────────────────── */
@@ -386,7 +426,15 @@ export class SelectionManager {
 
     this._updateSubSelectionVisuals();
     EventBus.emit('state:changed', { type: 'geometry' });
-    return { success: true, message: `Extruded face ${faceIndex} by ${amount.toFixed(3)}` };
+    return {
+      success: true,
+      message: `Extruded face ${faceIndex} by ${amount.toFixed(3)}`,
+      data: {
+        distance: amount,
+        normal: [normal.x, normal.y, normal.z],
+        vertexIndices: [...movable],
+      },
+    };
   }
 
   /* ── Gizmo attachment ─────────────────────────────────────── */
@@ -489,12 +537,146 @@ export class SelectionManager {
     }
   }
 
+  _startSelectionBox(event) {
+    const rect = this._domElement.getBoundingClientRect();
+    this._isBoxSelecting = true;
+    this._boxSelectState = {
+      startX: event.clientX,
+      startY: event.clientY,
+      currX: event.clientX,
+      currY: event.clientY,
+      viewportRect: rect,
+    };
+
+    this._selectionBoxEl.style.display = 'block';
+    this._selectionBoxEl.classList.remove('select-touch');
+    this.cam.controls.enabled = false;
+    this._updateSelectionBox(event);
+  }
+
+  _updateSelectionBox(event) {
+    if (!this._isBoxSelecting || !this._boxSelectState) return;
+    const s = this._boxSelectState;
+    s.currX = event.clientX;
+    s.currY = event.clientY;
+
+    const left = Math.min(s.startX, s.currX) - s.viewportRect.left;
+    const top = Math.min(s.startY, s.currY) - s.viewportRect.top;
+    const width = Math.abs(s.currX - s.startX);
+    const height = Math.abs(s.currY - s.startY);
+
+    this._selectionBoxEl.style.left = `${left}px`;
+    this._selectionBoxEl.style.top = `${top}px`;
+    this._selectionBoxEl.style.width = `${width}px`;
+    this._selectionBoxEl.style.height = `${height}px`;
+
+    // Bottom->Top drag => touch mode (crossing)
+    if (s.currY < s.startY) this._selectionBoxEl.classList.add('select-touch');
+    else this._selectionBoxEl.classList.remove('select-touch');
+  }
+
+  _finishSelectionBox() {
+    if (!this._isBoxSelecting || !this._boxSelectState) return false;
+
+    const s = this._boxSelectState;
+    const width = Math.abs(s.currX - s.startX);
+    const height = Math.abs(s.currY - s.startY);
+
+    this._selectionBoxEl.style.display = 'none';
+    this._selectionBoxEl.classList.remove('select-touch');
+    this.cam.controls.enabled = true;
+
+    this._isBoxSelecting = false;
+    this._boxSelectState = null;
+
+    // Treat tiny drag as normal click fallback
+    if (width < 6 || height < 6) return false;
+
+    const dragRect = {
+      left: Math.min(s.startX, s.currX),
+      right: Math.max(s.startX, s.currX),
+      top: Math.min(s.startY, s.currY),
+      bottom: Math.max(s.startY, s.currY),
+    };
+
+    const touchMode = s.currY < s.startY; // bottom->top
+    const ids = this._collectObjectsInSelectionBox(dragRect, touchMode, s.viewportRect);
+    this.selectByIds(ids, true);
+    return true;
+  }
+
+  _collectObjectsInSelectionBox(screenRect, touchMode, viewportRect) {
+    const ids = [];
+    const records = this.objs.list();
+
+    for (const rec of records) {
+      const bounds = this._projectObjectScreenBounds(rec.mesh, viewportRect);
+      if (!bounds) continue;
+
+      const match = touchMode
+        ? this._rectsIntersect(screenRect, bounds)
+        : this._rectContains(screenRect, bounds);
+
+      if (match) ids.push(rec.id);
+    }
+    return ids;
+  }
+
+  _projectObjectScreenBounds(object, viewportRect) {
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return null;
+
+    const corners = [
+      new THREE.Vector3(box.min.x, box.min.y, box.min.z),
+      new THREE.Vector3(box.min.x, box.min.y, box.max.z),
+      new THREE.Vector3(box.min.x, box.max.y, box.min.z),
+      new THREE.Vector3(box.min.x, box.max.y, box.max.z),
+      new THREE.Vector3(box.max.x, box.min.y, box.min.z),
+      new THREE.Vector3(box.max.x, box.min.y, box.max.z),
+      new THREE.Vector3(box.max.x, box.max.y, box.min.z),
+      new THREE.Vector3(box.max.x, box.max.y, box.max.z),
+    ];
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    corners.forEach((v) => {
+      v.project(this.cam.activeCamera);
+      const sx = viewportRect.left + ((v.x + 1) * 0.5) * viewportRect.width;
+      const sy = viewportRect.top + ((-v.y + 1) * 0.5) * viewportRect.height;
+      minX = Math.min(minX, sx);
+      minY = Math.min(minY, sy);
+      maxX = Math.max(maxX, sx);
+      maxY = Math.max(maxY, sy);
+    });
+
+    return { left: minX, right: maxX, top: minY, bottom: maxY };
+  }
+
+  _rectsIntersect(a, b) {
+    return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+  }
+
+  _rectContains(outer, inner) {
+    return inner.left >= outer.left
+      && inner.right <= outer.right
+      && inner.top >= outer.top
+      && inner.bottom <= outer.bottom;
+  }
+
   _handlePointerDown(event) {
     if (event.button !== 0) return;
     this._pointerDown = true;
     this._pointerMoved = false;
     this._pointerDownPos.x = event.clientX;
     this._pointerDownPos.y = event.clientY;
+
+    if (event.shiftKey && this._pickMode === 'object' && !this.transformControls.dragging) {
+      this._startSelectionBox(event);
+      return;
+    }
 
     if (this._pickMode === 'object') return;
     if (this.transformControls.dragging) return;
@@ -514,11 +696,20 @@ export class SelectionManager {
   }
 
   _handlePointerMove(event) {
-    if (!this._pointerDown && !this._dragState) return;
+    if (!this._pointerDown && !this._dragState && !this.transformControls.dragging) return;
 
     const dx = event.clientX - this._pointerDownPos.x;
     const dy = event.clientY - this._pointerDownPos.y;
     if (Math.hypot(dx, dy) > 3) this._pointerMoved = true;
+
+    if (this.transformControls.dragging && this._transformMode === 'translate') {
+      this._applyTransformSnapFromEvent(event);
+    }
+
+    if (this._isBoxSelecting) {
+      this._updateSelectionBox(event);
+      return;
+    }
 
     if (!this._dragState) return;
     this._applyDragToGeometry(event);
@@ -526,6 +717,16 @@ export class SelectionManager {
 
   _handlePointerUp(event) {
     if (!this._pointerDown && !this._dragState) return;
+
+    if (this._isBoxSelecting) {
+      const hasSelectionBox = this._finishSelectionBox();
+      if (!hasSelectionBox && event.target === this._domElement && !this._pointerMoved) {
+        this._handleClick(event);
+      }
+      this._pointerDown = false;
+      this._pointerMoved = false;
+      return;
+    }
 
     if (this._dragState) {
       this._endSubDrag();
@@ -716,7 +917,22 @@ export class SelectionManager {
     if (!pos) return;
 
     if (this._dragState.mode === 'extrude' && this._dragState.faceNormalWorld) {
-      const amount = (this._dragState.startMouseY - event.clientY) * 0.006;
+      let amount = (this._dragState.startMouseY - event.clientY) * 0.006;
+
+      const ray = this._rayFromEvent(event);
+      if (ray.intersectPlane(this._dragPlane, this._dragCurrentWorld) && this._snapProvider?.getSnap) {
+        const snapped = this._snapProvider.getSnap(this._dragCurrentWorld.clone(), {
+          camera: this.cam.activeCamera,
+          ray,
+          sceneObjects: this.objs.list(),
+          activeSnapSettings: this._snapProvider.getSettings?.(),
+        });
+        if (snapped?.position) {
+          const deltaWorld = new THREE.Vector3().subVectors(snapped.position, this._dragStartWorld);
+          amount = deltaWorld.dot(this._dragState.faceNormalWorld);
+        }
+      }
+
       const localNormal = this._dragState.faceNormalWorld.clone().transformDirection(this._dragState.mesh.matrixWorld.clone().invert()).normalize();
       this._dragState.startPositions.forEach(({ index, value }) => {
         const moved = value.clone().addScaledVector(localNormal, amount);
@@ -726,7 +942,18 @@ export class SelectionManager {
       const ray = this._rayFromEvent(event);
       if (!ray.intersectPlane(this._dragPlane, this._dragCurrentWorld)) return;
 
-      const deltaWorld = new THREE.Vector3().subVectors(this._dragCurrentWorld, this._dragStartWorld);
+      const targetWorld = this._dragCurrentWorld.clone();
+      if (this._snapProvider?.getSnap) {
+        const snap = this._snapProvider.getSnap(targetWorld, {
+          camera: this.cam.activeCamera,
+          ray,
+          sceneObjects: this.objs.list(),
+          activeSnapSettings: this._snapProvider.getSettings?.(),
+        });
+        if (snap?.position) targetWorld.copy(snap.position);
+      }
+
+      const deltaWorld = new THREE.Vector3().subVectors(targetWorld, this._dragStartWorld);
       const originLocal = this._dragState.mesh.worldToLocal(this._dragStartWorld.clone());
       const targetLocal = this._dragState.mesh.worldToLocal(this._dragStartWorld.clone().add(deltaWorld));
       const deltaLocal = targetLocal.sub(originLocal);
@@ -742,6 +969,71 @@ export class SelectionManager {
     geometry.computeBoundingSphere();
     this._updateSubSelectionVisuals();
     EventBus.emit('state:changed', { type: 'geometry' });
+  }
+
+  _beginTransformSnap() {
+    const object = this.transformControls.object;
+    if (!object) return;
+
+    const camNormal = new THREE.Vector3();
+    this.cam.activeCamera.getWorldDirection(camNormal);
+
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+      camNormal.normalize(),
+      object.position.clone()
+    );
+
+    this._transformSnapState = {
+      plane,
+      offset: new THREE.Vector3(),
+      initialized: false,
+    };
+  }
+
+  _applyTransformSnapFromEvent(event) {
+    if (!this._snapProvider?.getSnap || !this._transformSnapState) return;
+    const object = this.transformControls.object;
+    if (!object) return;
+
+    const ray = this._rayFromEvent(event);
+    const hit = new THREE.Vector3();
+    if (!ray.intersectPlane(this._transformSnapState.plane, hit)) return;
+
+    if (!this._transformSnapState.initialized) {
+      this._transformSnapState.offset.copy(object.position).sub(hit);
+      this._transformSnapState.initialized = true;
+    }
+
+    const rawTarget = hit.add(this._transformSnapState.offset);
+    const snap = this._snapProvider.getSnap(rawTarget, {
+      camera: this.cam.activeCamera,
+      ray,
+      sceneObjects: this.objs.list(),
+      activeSnapSettings: this._snapProvider.getSettings?.(),
+    });
+    if (!snap?.position) return;
+
+    // Respect active gizmo axis/plane: never overwrite unconstrained axes.
+    const constrained = this._constrainPositionToTransformAxis(
+      object.position,
+      snap.position,
+      this.transformControls.axis
+    );
+    object.position.copy(constrained);
+    EventBus.emit('state:changed', { type: 'transform' });
+  }
+
+  _constrainPositionToTransformAxis(current, target, axis) {
+    if (!axis || axis === 'XYZ') return target.clone();
+
+    const next = current.clone();
+
+    // Single-axis handles
+    if (axis.includes('X')) next.x = target.x;
+    if (axis.includes('Y')) next.y = target.y;
+    if (axis.includes('Z')) next.z = target.z;
+
+    return next;
   }
 
   _computeFaceNormalWorld(mesh, faceIndex) {
@@ -970,5 +1262,41 @@ export class SelectionManager {
     window.removeEventListener('pointerup', this._onPointerUp);
     this.scene.remove(this.transformControls);
     this.transformControls.dispose();
+    this._domElement.removeEventListener('contextmenu', this._onContextMenu);
+    this._selectionBoxEl?.remove();
+  }
+
+  _handleContextMenu(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const rect = this._domElement.getBoundingClientRect();
+    this._pointer.x = ((event.clientX - rect.left) / rect.width)  * 2 - 1;
+    this._pointer.y = -((event.clientY - rect.top)  / rect.height) * 2 + 1;
+
+    this.raycaster.setFromCamera(this._pointer, this.cam.activeCamera);
+    const hits = this.raycaster.intersectObjects(this.objs.getMeshes(), false);
+    if (hits.length === 0) return;
+
+    const id = this._getEditorIdFromObject(hits[0].object);
+    if (!id) return;
+
+    if (!this.selected.has(id)) {
+      this.selectByIds([id], false);
+    }
+
+    const record = this.objs.getById(id);
+    if (!record) return;
+
+    EventBus.emit('contextmenu:show', {
+      record,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  /** Update TransformControls camera reference (needed when switching views) */
+  updateCamera() {
+    this.transformControls.camera = this.cam.activeCamera;
   }
 }

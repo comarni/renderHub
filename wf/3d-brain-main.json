@@ -1,0 +1,339 @@
+{
+  "name": "3D Brain - Orquestador Principal",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "3d-brain",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "brain-wh-001",
+      "name": "Webhook 3D Brain",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "3d-brain-webhook"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "brain-llm-001",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [500, 160],
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Prompt del usuario: {{ $json.body.prompt }}\nFormato solicitado: {{ $json.body.format || 'stl' }}\nEstilo adicional: {{ $json.body.style || 'ninguno' }}",
+        "options": {
+          "systemMessage": "Eres el cerebro de búsqueda de referencias 3D para RenderHub, un generador de modelos 3D por prompts.\n\nCuando recibas un prompt:\n1. Extrae las palabras clave más relevantes en inglés para buscar modelos similares\n2. Usa las herramientas disponibles para buscar en TODAS las plataformas\n3. Prioriza plataformas que ofrezcan descarga STL directa (Thingiverse, MyMiniFactory)\n4. Consolida y rankea los resultados por relevancia\n\nDevuelve SIEMPRE un JSON con exactamente esta estructura:\n{\n  \"search_query\": \"keywords usadas para buscar\",\n  \"prompt_original\": \"el prompt recibido\",\n  \"total_results\": número_total,\n  \"stl_available\": número_con_stl_directo,\n  \"results\": [\n    {\n      \"platform\": \"Thingiverse|MyMiniFactory|Printables|Sketchfab|Cults3D\",\n      \"id\": \"id_del_modelo\",\n      \"name\": \"nombre del modelo\",\n      \"description\": \"descripción breve\",\n      \"thumbnail_url\": \"url de miniatura\",\n      \"page_url\": \"url de la página del modelo\",\n      \"download_url\": \"url de descarga STL o null\",\n      \"stl_direct\": true|false,\n      \"relevance_score\": 0.0_a_1.0,\n      \"tags\": [\"tag1\", \"tag2\"]\n    }\n  ]\n}\n\nNo incluyas texto fuera del JSON en tu respuesta final."
+        }
+      },
+      "id": "brain-agent-001",
+      "name": "AI Agent 3D Brain",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [500, 400]
+    },
+    {
+      "parameters": {
+        "name": "buscar_thingiverse",
+        "description": "Busca modelos 3D en Thingiverse. SIEMPRE úsala. Devuelve modelos con descarga STL directa. Usa palabras clave en inglés. La respuesta incluye hits[] con id, name, thumbnail, public_url.",
+        "method": "GET",
+        "url": "https://api.thingiverse.com/search/{query}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "type", "value": "things" },
+            { "name": "per_page", "value": "5" },
+            { "name": "sort", "value": "relevant" }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "query",
+              "description": "Palabras clave del modelo 3D a buscar, en inglés",
+              "type": "string",
+              "required": true
+            }
+          ]
+        }
+      },
+      "id": "brain-tool-tv",
+      "name": "Tool: Thingiverse",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [160, 680],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "THINGIVERSE_CRED_ID",
+          "name": "Thingiverse Bearer Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "buscar_myminifactory",
+        "description": "Busca modelos 3D en MyMiniFactory. SIEMPRE úsala. Solo modelos verificados e imprimibles con STL directo. Responde con items[] que tienen id, name, url, files.",
+        "method": "GET",
+        "url": "https://www.myminifactory.com/api/v2/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "{query}" },
+            { "name": "key", "value": "MMF_API_KEY_AQUI" },
+            { "name": "per_page", "value": "5" }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "query",
+              "description": "Palabras clave del modelo 3D a buscar",
+              "type": "string",
+              "required": true
+            }
+          ]
+        }
+      },
+      "id": "brain-tool-mmf",
+      "name": "Tool: MyMiniFactory",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [380, 680]
+    },
+    {
+      "parameters": {
+        "name": "buscar_printables",
+        "description": "Busca modelos 3D en Printables (Prusa Research). Gran base de datos gratuita. API GraphQL. Devuelve prints con name, slug, summary, images, downloadCount.",
+        "method": "POST",
+        "url": "https://api.printables.com/graphql/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"operationName\":\"SearchPrint\",\"variables\":{\"query\":\"{query}\",\"limit\":5},\"query\":\"query SearchPrint($query: String!, $limit: Int) { prints(query: $query, limit: $limit) { items { id name slug summary firstImage { filePath } user { publicUsername } downloadCount likeCount } } }\"}",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "query",
+              "description": "Palabras clave del modelo 3D a buscar en Printables",
+              "type": "string",
+              "required": true
+            }
+          ]
+        }
+      },
+      "id": "brain-tool-pr",
+      "name": "Tool: Printables",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [600, 680]
+    },
+    {
+      "parameters": {
+        "name": "buscar_sketchfab",
+        "description": "Busca modelos 3D en Sketchfab. Alta calidad visual y gran variedad. Descarga en glTF/GLB (no STL directo por API). Útil para referencias visuales. Devuelve results[] con uid, name, thumbnails.",
+        "method": "GET",
+        "url": "https://api.sketchfab.com/v3/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "type", "value": "models" },
+            { "name": "q", "value": "{query}" },
+            { "name": "downloadable", "value": "true" },
+            { "name": "count", "value": "5" },
+            { "name": "sort_by", "value": "-relevance" }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "query",
+              "description": "Palabras clave del modelo 3D a buscar en Sketchfab",
+              "type": "string",
+              "required": true
+            }
+          ]
+        }
+      },
+      "id": "brain-tool-sf",
+      "name": "Tool: Sketchfab",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [820, 680],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "SKETCHFAB_CRED_ID",
+          "name": "Sketchfab API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "buscar_cults3d",
+        "description": "Busca modelos 3D en Cults3D vía GraphQL. Diseños creativos y únicos, muchos gratuitos. Auth Basic (usuario:api_key en Base64). Devuelve id, name, description, imageUrls, tagNames.",
+        "method": "POST",
+        "url": "https://cults3d.com/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"query\":\"{ creations(limit: 5, query: \\\"{query}\\\") { id name description imageUrls tagNames viewsCount creationLikesCount } }\"}",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "query",
+              "description": "Palabras clave del modelo 3D a buscar en Cults3D",
+              "type": "string",
+              "required": true
+            }
+          ]
+        }
+      },
+      "id": "brain-tool-c3",
+      "name": "Tool: Cults3D",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [1040, 680],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CULTS3D_CRED_ID",
+          "name": "Cults3D Basic Auth (usuario:api_key)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst agentOutput = raw.output || raw.text || raw;\n\nlet parsedData;\ntry {\n  const text = typeof agentOutput === 'string' ? agentOutput : JSON.stringify(agentOutput);\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  parsedData = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: agentOutput };\n} catch (e) {\n  parsedData = { parse_error: e.message, raw: agentOutput };\n}\n\n// Ordenar resultados por relevance_score descendente\nif (parsedData.results && Array.isArray(parsedData.results)) {\n  parsedData.results.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));\n}\n\nreturn {\n  success: true,\n  timestamp: new Date().toISOString(),\n  source: 'RenderHub-3D-Brain-v1',\n  ...parsedData\n};"
+      },
+      "id": "brain-code-001",
+      "name": "Formatear Respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "application/json" },
+              { "name": "X-Powered-By", "value": "RenderHub-3D-Brain" },
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "brain-resp-001",
+      "name": "Responder al App",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"error\": \"{{ $json.message }}\", \"timestamp\": \"{{ $now.toISO() }}\" }",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "brain-err-001",
+      "name": "Respuesta Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1000, 560]
+    }
+  ],
+  "connections": {
+    "Webhook 3D Brain": {
+      "main": [
+        [{ "node": "AI Agent 3D Brain", "type": "main", "index": 0 }]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [{ "node": "AI Agent 3D Brain", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "Tool: Thingiverse": {
+      "ai_tool": [
+        [{ "node": "AI Agent 3D Brain", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Tool: MyMiniFactory": {
+      "ai_tool": [
+        [{ "node": "AI Agent 3D Brain", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Tool: Printables": {
+      "ai_tool": [
+        [{ "node": "AI Agent 3D Brain", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Tool: Sketchfab": {
+      "ai_tool": [
+        [{ "node": "AI Agent 3D Brain", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Tool: Cults3D": {
+      "ai_tool": [
+        [{ "node": "AI Agent 3D Brain", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "AI Agent 3D Brain": {
+      "main": [
+        [{ "node": "Formatear Respuesta", "type": "main", "index": 0 }]
+      ]
+    },
+    "Formatear Respuesta": {
+      "main": [
+        [{ "node": "Responder al App", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "3d-brain-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "renderhub-3d-brain"
+  },
+  "tags": ["renderhub", "3d", "ai-agent", "brain", "stl", "modelos"]
+}

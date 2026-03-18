@@ -1,0 +1,73 @@
+{
+  "name": "3D Search - MyMiniFactory",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "mmf-trigger-001",
+      "name": "Trigger Sub-Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.myminifactory.com/api/v2/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "={{ $json.query }}" },
+            { "name": "key", "value": "MMF_API_KEY_AQUI" },
+            { "name": "per_page", "value": "={{ $json.limit || 5 }}" },
+            { "name": "sort", "value": "trending" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "mmf-http-001",
+      "name": "GET MMF Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "notes": "API Key gratuita en: https://www.myminifactory.com/user/profile - sección API"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalizar respuesta de MyMiniFactory al formato RenderHub\nconst response = $input.first().json;\nconst items = response.items || response.objects || [];\nconst query = $('Trigger Sub-Workflow').first().json.query || '';\n\nconst normalized = items.map(item => {\n  // Extraer thumbnail de images array\n  const thumb = item.images?.[0]?.thumbnail?.url ||\n                item.images?.[0]?.url ||\n                item.main_image?.thumbnail?.url || '';\n\n  // Extraer URL de descarga de files array (buscar STL)\n  const stlFile = (item.files || []).find(f =>\n    (f.filename || '').toLowerCase().includes('.stl')\n  );\n  const downloadUrl = stlFile?.download_url || item.object_url || null;\n\n  return {\n    platform: 'MyMiniFactory',\n    id: String(item.id),\n    name: item.name || '',\n    description: (item.description || '').replace(/<[^>]*>/g, '').slice(0, 300),\n    thumbnail_url: thumb,\n    page_url: item.url || `https://www.myminifactory.com/object/${item.id}`,\n    download_url: downloadUrl,\n    stl_direct: !!stlFile,\n    creator: item.designer?.username || '',\n    likes: item.likes_count || 0,\n    downloads: item.download_count || 0,\n    tags: (item.tags || []).map(t => t.name || t).slice(0, 8)\n  };\n});\n\nreturn {\n  platform: 'MyMiniFactory',\n  query,\n  count: normalized.length,\n  results: normalized\n};"
+      },
+      "id": "mmf-code-001",
+      "name": "Normalizar Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    }
+  ],
+  "connections": {
+    "Trigger Sub-Workflow": {
+      "main": [
+        [{ "node": "GET MMF Search", "type": "main", "index": 0 }]
+      ]
+    },
+    "GET MMF Search": {
+      "main": [
+        [{ "node": "Normalizar Resultados", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "myminifactory-search-v1",
+  "meta": {
+    "instanceId": "renderhub-myminifactory-search",
+    "notes": "INPUT esperado: { query: string, limit?: number }\nOUTPUT: { platform, query, count, results[] }\nCredencial: API Key gratuita en myminifactory.com/user/profile\nTodos los modelos en MMF son verificados para impresión 3D (solo STL)."
+  },
+  "tags": ["renderhub", "3d", "myminifactory", "search", "stl"]
+}

@@ -1,6 +1,131 @@
 # RenderHub Export Modules
 
-This directory contains exporters for saving RenderHub 3D scenes in different formats.
+This directory contains the **pluggable export system** for RenderHub 3D scenes.
+
+---
+
+## 🏗️ Architecture
+
+```
+export/
+  ExportManager.js          ← Central coordinator (registration + dispatch)
+  ExportPanel.js            ← Modal UI (format selector, filename, result)
+  exporters/
+    stlExporter.js          ← STL   (3D printing / CAD / CNC)
+    gltfExporter.js         ← GLTF/GLB (web / games / DCC)
+    jsonExporter.js         ← JSON / .hub (backup / debug)
+    htmlExporter.js         ← HTML (standalone interactive viewer)
+    _exportUtils.js         ← Shared helpers (downloadBlob, ensureExtension)
+  STLExporter.js            ← Legacy (full-scene STL, used by CommandParser)
+  HTMLEmbeddedExporter.js   ← Legacy (used by legacy toolbar + HTML wrapper)
+  ObjectExporter.js         ← Single-object STL/GLB (used by PropertiesPanel)
+  AtmosphericStoryExporter.js ← Atmospheric story HTML
+```
+
+---
+
+## 🔌 Exporter Interface
+
+Every pluggable exporter must implement:
+
+```js
+{
+  get name():      string          // 'STL' | 'GLTF' | 'JSON' | 'HTML' | …
+  get extension(): string          // 'stl' | 'glb'  | 'hub'  | 'html' | …
+  get label():     string          // Human-readable description shown in UI
+  supports(domain: string): boolean
+  export(hubScene: HubScene, options: ExportOptions): ExportResult | Promise<ExportResult>
+}
+```
+
+### HubScene (passed to every exporter)
+
+```js
+{
+  name:            string,
+  version:         number,
+  objects:         ObjectRecord[],    // objectManager.list()
+  scene:           THREE.Scene,
+  objectManager:   ObjectManager,
+  materialManager: MaterialManager,
+  cad: {
+    operations:             OpEntry[],
+    suppressedOperationIds: string[],
+    undoneOperationIds:     string[],
+  },
+  snapSettings:    SnapSettings,
+  metadata: {
+    domain:      string,              // 'industrial' | 'cinematic' | 'default'
+    createdAt:   string,
+    exportedAt:  string,
+  },
+}
+```
+
+### ExportResult
+
+```js
+{
+  success:   boolean,
+  message:   string,
+  blob?:     Blob,
+  text?:     string,
+  filename?: string,
+}
+```
+
+---
+
+## 🚀 Using ExportManager
+
+```js
+import { ExportManager }         from './export/ExportManager.js';
+import { STLPluggableExporter }  from './export/exporters/stlExporter.js';
+import { GLTFPluggableExporter } from './export/exporters/gltfExporter.js';
+
+const manager = new ExportManager({ scene, objectManager, materialManager, cadState });
+
+manager
+  .register(new STLPluggableExporter())
+  .register(new GLTFPluggableExporter());
+
+// Export
+const result = await manager.export('stl', { filename: 'my-part' });
+// → { success: true, message: '✓ Exported "my-part.stl" — 3 objects, 14.2 KB', blob }
+```
+
+---
+
+## ➕ Adding a New Exporter
+
+```js
+// export/exporters/myFormatExporter.js
+export class MyFormatExporter {
+  get name()      { return 'MYFORMAT'; }
+  get extension() { return 'xyz'; }
+  get label()     { return 'MyFormat — Description'; }
+  supports(_domain) { return true; }
+  export(hubScene, { filename, download }) {
+    // ... build blob ...
+    return { success: true, message: '✓ Done', blob, filename };
+  }
+}
+
+// In app.js — register without touching ExportManager core:
+exportManager.register(new MyFormatExporter());
+```
+
+---
+
+## 📦 Available Exporters
+
+| Format | File              | Output      | Notes                          |
+|--------|-------------------|-------------|--------------------------------|
+| STL    | stlExporter.js    | `.stl`      | Binary, baked world transforms |
+| GLTF   | gltfExporter.js   | `.glb`      | Full scene, PBR materials      |
+| JSON   | jsonExporter.js   | `.hub`      | Raw .hub, reloadable           |
+| HTML   | htmlExporter.js   | `.html`     | Standalone Three.js viewer     |
+
 
 ## 📦 Available Exporters
 

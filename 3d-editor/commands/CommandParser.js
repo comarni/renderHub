@@ -44,6 +44,9 @@ Available commands:
   material <preset>     — plastic|metal|matte|glass|rubber|chrome|gold|wood|concrete|ceramic|carbon|velvet
   roughness <0-1>       — roughness 0.3
   metalness <0-1>       — metalness 0.8
+  animate <preset>      — hover|tremor|shiver|breathe|reactive|alive|liquid|magnetic|glitch|breathing-architecture|clear
+  demo <preset>         — reactive | cinematic | portfolio
+  timeline <preset>     — cinematic | portfolio | pulse | stop
   duplicate             — duplicate selected
   delete                — delete selected
   rename <name>         — rename NewName
@@ -98,9 +101,11 @@ export class CommandParser {
     this._atmosphericExporter = null;
     this._scenarioDirector = null;
     this._environment = null;
+    this._objectAnimator = null;
 
     this._history   = [];  // undo stack (100 entries)
     this._redoStack = [];  // redo stack
+    this._cadOpCounter = 0;
   }
   /** Wire the ModelImporter after construction. */
   setImporter(importer) {
@@ -118,6 +123,10 @@ export class CommandParser {
 
   setEnvironmentManager(environmentManager) {
     this._environment = environmentManager;
+  }
+
+  setObjectAnimator(objectAnimator) {
+    this._objectAnimator = objectAnimator;
   }
 
   /** True if there are undo steps available. */
@@ -152,6 +161,16 @@ export class CommandParser {
 
     try {
       switch (cmd) {
+        case 'cube':       return this._add(['cube']);
+        case 'box':        return this._add(['cube']);
+        case 'sphere':     return this._add(['sphere']);
+        case 'cylinder':   return this._add(['cylinder']);
+        case 'hover':      return this._animate(['hover']);
+        case 'tremor':     return this._animate(['tremor']);
+        case 'shiver':     return this._animate(['shiver']);
+        case 'breathe':    return this._animate(['breathe']);
+        case 'reactive':   return this._animate(['reactive']);
+        case 'alive':      return this._animate(['alive']);
         case 'add':        return this._add(args);
         case 'select':     return this._select(args);
         case 'translate':  return this._translate(args);
@@ -170,6 +189,10 @@ export class CommandParser {
         case 'material':   return this._material(args);
         case 'roughness':  return this._roughness(args);
         case 'metalness':  return this._metalness(args);
+        case 'animate':    return this._animate(args);
+        case 'fx':         return this._animate(args);
+        case 'demo':       return this._demo(args);
+        case 'timeline':   return this._timelineCmd(args);
         case 'duplicate':  return this._duplicate();
         case 'delete':     return this._delete();
         case 'rename':     return this._rename(args);
@@ -206,16 +229,35 @@ export class CommandParser {
 
   /* ══ Undo / Redo ══════════════════════════════════════════════ */
 
-  _pushHistory(label, undoFn, redoFn) {
-    this._history.push({ label, undo: undoFn, redo: redoFn });
+  _pushHistory(label, undoFn, redoFn, meta = null) {
+    const cadOperationId = this._recordCadOperation(label, meta);
+    this._history.push({ label, undo: undoFn, redo: redoFn, cadOperationId });
     this._redoStack = [];
     if (this._history.length > 100) this._history.shift();
+  }
+
+  _recordCadOperation(label, meta = null) {
+    if (!meta?.objectId) return null;
+    this._cadOpCounter += 1;
+    const opId = `cadop_${Date.now()}_${this._cadOpCounter}`;
+    EventBus.emit('cad:operation:recorded', {
+      id: opId,
+      label,
+      type: meta.type || 'operation',
+      objectId: meta.objectId,
+      payload: meta.payload || null,
+      timestamp: Date.now(),
+    });
+    return opId;
   }
 
   undo() {
     const entry = this._history.pop();
     if (!entry) return { success: false, message: 'Nothing to undo.' };
     entry.undo();
+    if (entry.cadOperationId) {
+      EventBus.emit('cad:operation:undone', { operationId: entry.cadOperationId });
+    }
     this._redoStack.push(entry);
     EventBus.emit('state:changed', { type: 'scene' });
     return { success: true, message: `Undo: ${entry.label}` };
@@ -225,6 +267,9 @@ export class CommandParser {
     const entry = this._redoStack.pop();
     if (!entry) return { success: false, message: 'Nothing to redo.' };
     entry.redo();
+    if (entry.cadOperationId) {
+      EventBus.emit('cad:operation:redone', { operationId: entry.cadOperationId });
+    }
     this._history.push(entry);
     EventBus.emit('state:changed', { type: 'scene' });
     return { success: true, message: `Redo: ${entry.label}` };
@@ -329,6 +374,14 @@ export class CommandParser {
       () => {
         const r = this.objs.add(type, record.name);
         this.sel.selectByIds([r.id], false);
+      },
+      {
+        objectId: record.id,
+        type: 'create',
+        payload: {
+          base: this._captureObjectState(record),
+          primitiveType: type,
+        },
       }
     );
 
@@ -390,12 +443,15 @@ export class CommandParser {
     if (error) return error;
     const [x, y, z] = xyz;
     const mesh = rec.mesh;
+    const before = this._captureObjectState(rec);
     const prev = mesh.position.clone();
     mesh.position.set(x, y, z);
+    const after = this._captureObjectState(rec);
     this._pushHistory(
       `move ${rec.name}`,
       () => { mesh.position.copy(prev); EventBus.emit('state:changed', { type: 'transform' }); },
-      () => { mesh.position.set(x, y, z); EventBus.emit('state:changed', { type: 'transform' }); }
+      () => { mesh.position.set(x, y, z); EventBus.emit('state:changed', { type: 'transform' }); },
+      { objectId: rec.id, type: 'transform', payload: { before, after } }
     );
     EventBus.emit('state:changed', { type: 'transform' });
     return { success: true, message: `Moved "${rec.name}" to (${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)})` };
@@ -405,6 +461,7 @@ export class CommandParser {
     const rec = this._resolveRotationTarget(args);
     if (rec._error) return rec;
     const mesh = rec.mesh;
+    const before = this._captureObjectState(rec);
     const prev = mesh.rotation.clone();
 
     let rx, ry, rz;
@@ -427,11 +484,13 @@ export class CommandParser {
     }
 
     mesh.rotation.set(rx * DEG2RAD, ry * DEG2RAD, rz * DEG2RAD);
+    const after = this._captureObjectState(rec);
 
     this._pushHistory(
       `rotate ${rec.name}`,
       () => { mesh.rotation.copy(prev); EventBus.emit('state:changed', { type: 'transform' }); },
-      () => { mesh.rotation.set(rx * DEG2RAD, ry * DEG2RAD, rz * DEG2RAD); EventBus.emit('state:changed', { type: 'transform' }); }
+      () => { mesh.rotation.set(rx * DEG2RAD, ry * DEG2RAD, rz * DEG2RAD); EventBus.emit('state:changed', { type: 'transform' }); },
+      { objectId: rec.id, type: 'transform', payload: { before, after } }
     );
     EventBus.emit('state:changed', { type: 'transform' });
     return { success: true, message: `Rotated "${rec.name}"` };
@@ -441,6 +500,7 @@ export class CommandParser {
     const rec = this._resolveScaleTarget(args);
     if (rec._error) return rec;
     const mesh = rec.mesh;
+    const before = this._captureObjectState(rec);
     const prev = mesh.scale.clone();
     const scaleArgs = rec._args;
 
@@ -457,10 +517,12 @@ export class CommandParser {
     }
 
     mesh.scale.set(sx, sy, sz);
+    const after = this._captureObjectState(rec);
     this._pushHistory(
       `scale ${rec.name}`,
       () => { mesh.scale.copy(prev); EventBus.emit('state:changed', { type: 'transform' }); },
-      () => { mesh.scale.set(sx, sy, sz); EventBus.emit('state:changed', { type: 'transform' }); }
+      () => { mesh.scale.set(sx, sy, sz); EventBus.emit('state:changed', { type: 'transform' }); },
+      { objectId: rec.id, type: 'transform', payload: { before, after } }
     );
     EventBus.emit('state:changed', { type: 'transform' });
     return { success: true, message: `Scaled "${rec.name}" to (${sx}, ${sy}, ${sz})` };
@@ -479,13 +541,16 @@ export class CommandParser {
 
     const prevMat = this.mats.getPrimaryMaterial(rec.mesh);
     if (!prevMat?.color) return { success: false, message: `No editable material on "${rec.name}"` };
+    const before = this._captureObjectState(rec);
     const prevColor = '#' + prevMat.color.getHexString();
     this.mats.applyColor(rec.mesh, hex);
+    const after = this._captureObjectState(rec);
 
     this._pushHistory(
       `color ${rec.name}`,
       () => { this.mats.applyColor(rec.mesh, prevColor); EventBus.emit('state:changed', { type: 'material' }); },
-      () => { this.mats.applyColor(rec.mesh, hex); EventBus.emit('state:changed', { type: 'material' }); }
+      () => { this.mats.applyColor(rec.mesh, hex); EventBus.emit('state:changed', { type: 'material' }); },
+      { objectId: rec.id, type: 'material', payload: { before, after } }
     );
     EventBus.emit('state:changed', { type: 'material' });
     return { success: true, message: `Color set to ${hex} on "${rec.name}"` };
@@ -494,12 +559,26 @@ export class CommandParser {
   _material(args) {
     const rec = this._resolveTargetOrSelection(args, 'material');
     if (rec._error) return rec;
+    const before = this._captureObjectState(rec);
     const preset = (rec._args[0] || '').toLowerCase();
     const valid = Object.keys(MATERIAL_PRESETS);
     if (!valid.includes(preset)) {
       return { success: false, message: `Unknown preset "${preset}". Use: ${valid.join(', ')}` };
     }
     this.mats.applyPreset(rec.mesh, preset);
+    const after = this._captureObjectState(rec);
+    this._pushHistory(
+      `material ${rec.name}`,
+      () => {
+        this._applySnapshotToRecord(rec, before);
+        EventBus.emit('state:changed', { type: 'material' });
+      },
+      () => {
+        this._applySnapshotToRecord(rec, after);
+        EventBus.emit('state:changed', { type: 'material' });
+      },
+      { objectId: rec.id, type: 'material', payload: { before, after, preset } }
+    );
     EventBus.emit('state:changed', { type: 'material' });
     return { success: true, message: `Material set to "${preset}" on "${rec.name}"` };
   }
@@ -507,9 +586,23 @@ export class CommandParser {
   _roughness(args) {
     const rec = this._resolveTargetOrSelection(args, 'roughness');
     if (rec._error) return rec;
+    const before = this._captureObjectState(rec);
     const val = parseFloat(rec._args[0]);
     if (isNaN(val)) return { success: false, message: 'Usage: roughness <0-1>' };
     this.mats.setRoughness(rec.mesh, val);
+    const after = this._captureObjectState(rec);
+    this._pushHistory(
+      `roughness ${rec.name}`,
+      () => {
+        this._applySnapshotToRecord(rec, before);
+        EventBus.emit('state:changed', { type: 'material' });
+      },
+      () => {
+        this._applySnapshotToRecord(rec, after);
+        EventBus.emit('state:changed', { type: 'material' });
+      },
+      { objectId: rec.id, type: 'material', payload: { before, after } }
+    );
     EventBus.emit('state:changed', { type: 'material' });
     return { success: true, message: `Roughness: ${Math.max(0, Math.min(1, val)).toFixed(2)}` };
   }
@@ -517,9 +610,23 @@ export class CommandParser {
   _metalness(args) {
     const rec = this._resolveTargetOrSelection(args, 'metalness');
     if (rec._error) return rec;
+    const before = this._captureObjectState(rec);
     const val = parseFloat(rec._args[0]);
     if (isNaN(val)) return { success: false, message: 'Usage: metalness <0-1>' };
     this.mats.setMetalness(rec.mesh, val);
+    const after = this._captureObjectState(rec);
+    this._pushHistory(
+      `metalness ${rec.name}`,
+      () => {
+        this._applySnapshotToRecord(rec, before);
+        EventBus.emit('state:changed', { type: 'material' });
+      },
+      () => {
+        this._applySnapshotToRecord(rec, after);
+        EventBus.emit('state:changed', { type: 'material' });
+      },
+      { objectId: rec.id, type: 'material', payload: { before, after } }
+    );
     EventBus.emit('state:changed', { type: 'material' });
     return { success: true, message: `Metalness: ${Math.max(0, Math.min(1, val)).toFixed(2)}` };
   }
@@ -532,7 +639,15 @@ export class CommandParser {
     this._pushHistory(
       `duplicate ${rec.name}`,
       () => { this.sel.deselectAll(); this.objs.delete(newRec.id); },
-      () => { const r = this.objs.duplicate(rec.id); this.sel.selectByIds([r.id]); }
+      () => { const r = this.objs.duplicate(rec.id); this.sel.selectByIds([r.id]); },
+      {
+        objectId: newRec.id,
+        type: 'create',
+        payload: {
+          base: this._captureObjectState(newRec),
+          primitiveType: newRec.type,
+        },
+      }
     );
     return { success: true, message: `Duplicated "${rec.name}" → "${newRec.name}"` };
   }
@@ -553,10 +668,12 @@ export class CommandParser {
     const newName = args.join(' ');
     const oldName = rec.name;
     this.objs.rename(rec.id, newName);
+    const after = this._captureObjectState(rec);
     this._pushHistory(
       `rename ${oldName}`,
       () => { this.objs.rename(rec.id, oldName); EventBus.emit('state:changed', { type: 'scene' }); },
-      () => { this.objs.rename(rec.id, newName); EventBus.emit('state:changed', { type: 'scene' }); }
+      () => { this.objs.rename(rec.id, newName); EventBus.emit('state:changed', { type: 'scene' }); },
+      { objectId: rec.id, type: 'meta', payload: { after } }
     );
     return { success: true, message: `Renamed "${oldName}" → "${newName}"` };
   }
@@ -583,6 +700,55 @@ export class CommandParser {
     this.sel.deselectAll();
     this.objs.reset();
     return { success: true, message: 'Scene cleared.' };
+  }
+
+  _animate(args) {
+    if (!this._objectAnimator) {
+      return { success: false, message: 'Animation system is not available.' };
+    }
+    const preset = (args[0] || '').toLowerCase();
+    if (!preset) {
+      return { success: false, message: `Usage: animate <${this._objectAnimator.presets.join('|')}>` };
+    }
+    const result = this._objectAnimator.applyPresetToSelection(preset);
+    if (result.success) {
+      EventBus.emit('analytics:event', {
+        name: 'scene_created',
+        payload: {
+          source: 'animate_command',
+          preset,
+          count: this.sel.getAll().length,
+        },
+      });
+    }
+    return result;
+  }
+
+  _demo(args) {
+    if (!this._objectAnimator) {
+      return { success: false, message: 'Animation system is not available.' };
+    }
+    const preset = (args[0] || 'reactive').toLowerCase();
+    const result = this._objectAnimator.createDemoPack(preset);
+    if (result.success) {
+      EventBus.emit('analytics:event', {
+        name: 'scene_created',
+        payload: {
+          source: 'demo_command',
+          preset,
+          objectCount: this.objs.list().length,
+        },
+      });
+    }
+    return result;
+  }
+
+  _timelineCmd(args) {
+    if (!this._objectAnimator) {
+      return { success: false, message: 'Animation system is not available.' };
+    }
+    const preset = (args[0] || 'cinematic').toLowerCase();
+    return this._objectAnimator.startTimeline(preset);
   }
 
   _export(args) {
@@ -677,7 +843,36 @@ export class CommandParser {
     if (!Number.isFinite(dist)) {
       return { success: false, message: 'Usage: extrude selection <distance>' };
     }
-    return this.sel.extrudeSelectedFace(dist);
+    const rec = this.sel.getPrimary();
+    const before = rec?._error ? null : (rec ? this._captureObjectState(rec) : null);
+    const result = this.sel.extrudeSelectedFace(dist);
+    if (result?.success) {
+      if (rec?.id) {
+        const after = this._captureObjectState(rec);
+        this._pushHistory(
+          `extrude ${rec.name}`,
+          () => {
+            this._applySnapshotToRecord(rec, before);
+            EventBus.emit('state:changed', { type: 'geometry' });
+          },
+          () => {
+            this._applySnapshotToRecord(rec, after);
+            EventBus.emit('state:changed', { type: 'geometry' });
+          },
+          {
+            objectId: rec.id,
+            type: 'extrude',
+            payload: {
+              before,
+              after,
+              distance: dist,
+              extrusion: result.data || null,
+            },
+          }
+        );
+      }
+    }
+    return result;
   }
 
   _subdivide(args) {
@@ -693,6 +888,8 @@ export class CommandParser {
       return { success: false, message: `Object "${rec.name}" has no editable mesh geometry.` };
     }
 
+    const before = this._captureObjectState(rec);
+
     for (let i = 0; i < iterations; i++) {
       mesh.geometry = this._subdivideGeometry(mesh.geometry);
     }
@@ -700,6 +897,21 @@ export class CommandParser {
     mesh.geometry.computeVertexNormals();
     mesh.geometry.computeBoundingBox();
     mesh.geometry.computeBoundingSphere();
+
+    const after = this._captureObjectState(rec);
+    this._pushHistory(
+      `subdivide ${rec.name}`,
+      () => {
+        this._applySnapshotToRecord(rec, before);
+        EventBus.emit('state:changed', { type: 'geometry' });
+      },
+      () => {
+        this._applySnapshotToRecord(rec, after);
+        EventBus.emit('state:changed', { type: 'geometry' });
+      },
+      { objectId: rec.id, type: 'geometry', payload: { before, after, iterations } }
+    );
+
     EventBus.emit('state:changed', { type: 'geometry' });
     return { success: true, message: `Subdivided "${rec.name}" x${iterations}` };
   }
@@ -728,6 +940,8 @@ export class CommandParser {
       return { success: false, message: `Object "${rec.name}" has no editable mesh geometry.` };
     }
 
+    const beforeState = this._captureObjectState(rec);
+
     const distToken = args.find(t => /^distance=/i.test(t)) || 'distance=0.0001';
     const distance = Math.max(0, parseFloat(distToken.split('=')[1]) || 0.0001);
 
@@ -739,6 +953,20 @@ export class CommandParser {
     mesh.geometry.dispose();
     mesh.geometry = merged;
     const after = mesh.geometry.attributes.position.count;
+
+    const afterState = this._captureObjectState(rec);
+    this._pushHistory(
+      `${label} ${rec.name}`,
+      () => {
+        this._applySnapshotToRecord(rec, beforeState);
+        EventBus.emit('state:changed', { type: 'geometry' });
+      },
+      () => {
+        this._applySnapshotToRecord(rec, afterState);
+        EventBus.emit('state:changed', { type: 'geometry' });
+      },
+      { objectId: rec.id, type: 'geometry', payload: { before: beforeState, after: afterState, distance } }
+    );
 
     EventBus.emit('state:changed', { type: 'geometry' });
     return { success: true, message: `${label} on "${rec.name}": ${before} → ${after} vertices` };
@@ -761,13 +989,16 @@ export class CommandParser {
 
     const prevMat = this.mats.getPrimaryMaterial(rec.mesh);
     if (!prevMat?.color) return { success: false, message: `No editable material on "${rec.name}"` };
+    const before = this._captureObjectState(rec);
     const prevColor = '#' + prevMat.color.getHexString();
     this.mats.applyColor(rec.mesh, hex);
+    const after = this._captureObjectState(rec);
 
     this._pushHistory(
       `set color ${rec.name}`,
       () => { this.mats.applyColor(rec.mesh, prevColor); EventBus.emit('state:changed', { type: 'material' }); },
-      () => { this.mats.applyColor(rec.mesh, hex); EventBus.emit('state:changed', { type: 'material' }); }
+      () => { this.mats.applyColor(rec.mesh, hex); EventBus.emit('state:changed', { type: 'material' }); },
+      { objectId: rec.id, type: 'material', payload: { before, after } }
     );
 
     EventBus.emit('state:changed', { type: 'material' });
@@ -793,7 +1024,22 @@ export class CommandParser {
     const rec = this._findRecord(args[1]);
     if (!rec) return { success: false, message: `Object not found: "${args[1]}"` };
 
+    const before = this._captureObjectState(rec);
+
     this.mats.recalculateNormals(rec.mesh);
+    const after = this._captureObjectState(rec);
+    this._pushHistory(
+      `recalc normals ${rec.name}`,
+      () => {
+        this._applySnapshotToRecord(rec, before);
+        EventBus.emit('state:changed', { type: 'geometry' });
+      },
+      () => {
+        this._applySnapshotToRecord(rec, after);
+        EventBus.emit('state:changed', { type: 'geometry' });
+      },
+      { objectId: rec.id, type: 'geometry', payload: { before, after } }
+    );
     EventBus.emit('state:changed', { type: 'geometry' });
     return { success: true, message: `Normals recalculated on "${rec.name}"` };
   }
@@ -917,6 +1163,87 @@ export class CommandParser {
     const y = parseFloat(args[1]) || 0;
     const z = parseFloat(args[2]) || 0;
     return [x, y, z];
+  }
+
+  _captureObjectState(rec) {
+    const mesh = rec?.mesh;
+    if (!mesh) return null;
+
+    const editable = this._getEditableMesh(mesh);
+    const mat = this.mats.getPrimaryMaterial(mesh);
+
+    return {
+      position: mesh.position.toArray(),
+      rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
+      scale: mesh.scale.toArray(),
+      visible: mesh.visible,
+      material: mat?.color
+        ? {
+            color: `#${mat.color.getHexString()}`,
+            roughness: Number.isFinite(mat.roughness) ? mat.roughness : null,
+            metalness: Number.isFinite(mat.metalness) ? mat.metalness : null,
+          }
+        : null,
+      geometry: editable?.geometry ? this._serializeGeometry(editable.geometry) : null,
+    };
+  }
+
+  _serializeGeometry(geometry) {
+    const pos = geometry?.attributes?.position;
+    if (!pos) return null;
+    const index = geometry.index;
+    return {
+      position: Array.from(pos.array),
+      index: index ? Array.from(index.array) : null,
+    };
+  }
+
+  _applySnapshotToRecord(rec, snapshot) {
+    if (!rec || !snapshot) return;
+    const mesh = rec.mesh;
+
+    if (Array.isArray(snapshot.position) && snapshot.position.length === 3) {
+      mesh.position.fromArray(snapshot.position);
+    }
+    if (Array.isArray(snapshot.rotation) && snapshot.rotation.length === 3) {
+      mesh.rotation.set(snapshot.rotation[0], snapshot.rotation[1], snapshot.rotation[2]);
+    }
+    if (Array.isArray(snapshot.scale) && snapshot.scale.length === 3) {
+      mesh.scale.fromArray(snapshot.scale);
+    }
+    if (typeof snapshot.visible === 'boolean') {
+      mesh.visible = snapshot.visible;
+    }
+
+    if (snapshot.material?.color) {
+      const mat = this.mats.getPrimaryMaterial(mesh);
+      if (mat?.color) {
+        mat.color.set(snapshot.material.color);
+        if (Number.isFinite(snapshot.material.roughness) && Number.isFinite(mat.roughness)) {
+          mat.roughness = snapshot.material.roughness;
+        }
+        if (Number.isFinite(snapshot.material.metalness) && Number.isFinite(mat.metalness)) {
+          mat.metalness = snapshot.material.metalness;
+        }
+        mat.needsUpdate = true;
+      }
+    }
+
+    if (snapshot.geometry?.position) {
+      const editable = this._getEditableMesh(mesh);
+      if (editable?.geometry) {
+        const next = new THREE.BufferGeometry();
+        next.setAttribute('position', new THREE.Float32BufferAttribute(snapshot.geometry.position, 3));
+        if (Array.isArray(snapshot.geometry.index) && snapshot.geometry.index.length) {
+          next.setIndex(snapshot.geometry.index);
+        }
+        next.computeVertexNormals();
+        next.computeBoundingBox();
+        next.computeBoundingSphere();
+        editable.geometry.dispose();
+        editable.geometry = next;
+      }
+    }
   }
 
   _exportar(args) {

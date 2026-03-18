@@ -1,0 +1,199 @@
+{
+  "name": "3D STL Delivery - Descarga y Entrega",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "3d-stl-fetch",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "stl-wh-001",
+      "name": "Webhook STL Fetch",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "3d-stl-fetch-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.stl_url }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "stl-if-001",
+      "name": "Validar STL URL",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.body.stl_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "stl_binary"
+            }
+          }
+        }
+      },
+      "id": "stl-dl-001",
+      "name": "Descargar STL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 180],
+      "notes": "Descarga el archivo STL como binario. Si la URL requiere auth, añadir credencial al nodo."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar respuesta con el STL para el app\nconst binary = $input.first().binary;\nconst inputJson = $('Webhook STL Fetch').first().json.body;\n\nconst stlBuffer = binary?.stl_binary?.data || null;\nconst fileName = inputJson.model_name\n  ? `${inputJson.model_name.replace(/[^a-zA-Z0-9_-]/g, '_')}.stl`\n  : `model_${Date.now()}.stl`;\n\nconst base64Stl = stlBuffer\n  ? Buffer.from(stlBuffer, 'base64').toString('base64')\n  : null;\n\nconst fileSizeKb = stlBuffer\n  ? Math.round(Buffer.from(stlBuffer, 'base64').length / 1024)\n  : 0;\n\nreturn {\n  success: !!stlBuffer,\n  timestamp: new Date().toISOString(),\n  model_name: inputJson.model_name || 'modelo_3d',\n  platform: inputJson.platform || 'unknown',\n  source_url: inputJson.stl_url,\n  file_name: fileName,\n  file_size_kb: fileSizeKb,\n  stl_base64: base64Stl,\n  mime_type: 'model/stl',\n  ready_for_import: !!stlBuffer\n};"
+      },
+      "id": "stl-code-001",
+      "name": "Preparar Payload STL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "application/json" },
+              { "name": "X-Powered-By", "value": "RenderHub-STL-Delivery" },
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "stl-resp-ok",
+      "name": "Responder con STL",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1160, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"error\": \"stl_url es requerido en el body\", \"example\": { \"stl_url\": \"https://...\", \"model_name\": \"dragon\", \"platform\": \"Thingiverse\" } }",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "stl-resp-err",
+      "name": "Responder Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 420]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "3d-stl-proxy",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "stl-proxy-wh",
+      "name": "Webhook STL Proxy (binario)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 620],
+      "webhookId": "3d-stl-proxy-webhook",
+      "notes": "Alternativa: responde directamente con el archivo STL como binario (Content-Type: model/stl)"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.body.stl_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "stl-proxy-dl",
+      "name": "Descargar STL Binario",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 620]
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "responseBinaryPropertyName": "data",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "model/stl" },
+              { "name": "Content-Disposition", "value": "=attachment; filename=\"{{ $('Webhook STL Proxy (binario)').first().json.body.model_name || 'model' }}.stl\"" },
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "stl-proxy-resp",
+      "name": "Responder Archivo STL",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [720, 620]
+    }
+  ],
+  "connections": {
+    "Webhook STL Fetch": {
+      "main": [
+        [{ "node": "Validar STL URL", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validar STL URL": {
+      "main": [
+        [{ "node": "Descargar STL", "type": "main", "index": 0 }],
+        [{ "node": "Responder Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Descargar STL": {
+      "main": [
+        [{ "node": "Preparar Payload STL", "type": "main", "index": 0 }]
+      ]
+    },
+    "Preparar Payload STL": {
+      "main": [
+        [{ "node": "Responder con STL", "type": "main", "index": 0 }]
+      ]
+    },
+    "Webhook STL Proxy (binario)": {
+      "main": [
+        [{ "node": "Descargar STL Binario", "type": "main", "index": 0 }]
+      ]
+    },
+    "Descargar STL Binario": {
+      "main": [
+        [{ "node": "Responder Archivo STL", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "stl-delivery-v1",
+  "meta": {
+    "instanceId": "renderhub-stl-delivery",
+    "notes": "DOS endpoints disponibles:\n\n1. POST /3d-stl-fetch\n   Body: { stl_url: string, model_name?: string, platform?: string }\n   Respuesta: JSON con stl_base64 + metadata\n\n2. POST /3d-stl-proxy\n   Body: { stl_url: string, model_name?: string }\n   Respuesta: archivo STL binario directo (Content-Type: model/stl)\n   Usar cuando el app puede recibir el binario directamente."
+  },
+  "tags": ["renderhub", "3d", "stl", "delivery", "download", "webhook"]
+}

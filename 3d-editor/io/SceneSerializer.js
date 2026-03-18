@@ -10,6 +10,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import * as THREE from 'three';
+import { EventBus } from '../core/EventBus.js';
 
 const FORMAT_VERSION = 2;
 
@@ -52,11 +53,17 @@ export class SceneSerializer {
       });
     }
 
+    const cad = window.renderHubCadState?.exportOperations?.() || {
+      operations: [],
+      suppressedOperationIds: [],
+    };
+
     return {
       version:   FORMAT_VERSION,
       name:      filename,
       createdAt: new Date().toISOString(),
       objects,
+      cad,
     };
   }
 
@@ -111,7 +118,8 @@ export class SceneSerializer {
         this.objs.addGroup(
           object3D,
           entry.name || object3D.name || 'Object',
-          entry.type || object3D.userData.editorType || 'object'
+          entry.type || object3D.userData.editorType || 'object',
+          { id: entry.id }
         );
 
         loaded++;
@@ -119,6 +127,15 @@ export class SceneSerializer {
         console.warn(`[SceneSerializer] Skipped "${entry.name}": ${err.message}`);
       }
     }
+
+    const cad = hub.cad || { operations: [], suppressedOperationIds: [], undoneOperationIds: [] };
+    const validIds = new Set(this.objs.list().map((r) => r.id));
+    const operations = (cad.operations || []).filter((op) => op?.objectId && validIds.has(op.objectId));
+    const aliveOpIds = new Set(operations.map((op) => op.id));
+    const suppressedOperationIds = (cad.suppressedOperationIds || []).filter((id) => aliveOpIds.has(id));
+    const undoneOperationIds = (cad.undoneOperationIds || []).filter((id) => aliveOpIds.has(id));
+
+    EventBus.emit('scene:loaded', { cad: { operations, suppressedOperationIds, undoneOperationIds } });
 
     return `Loaded "${hub.name ?? 'scene'}.hub" — ${loaded} object${loaded !== 1 ? 's' : ''} restored`;
   }

@@ -7,6 +7,7 @@ import { EventBus } from '../core/EventBus.js';
 const ALL_COMMANDS = [
   'add', 'select', 'deselect', 'move', 'rotate', 'scale',
   'color', 'material', 'roughness', 'metalness',
+  'animate', 'fx', 'demo', 'timeline',
   'duplicate', 'delete', 'rename', 'list', 'focus',
   'reset', 'export', 'exportar', 'scenario', 'shuffle', 'view', 'wireframe', 'undo', 'redo', 'help'
 ];
@@ -21,6 +22,10 @@ const COMMAND_HINTS = {
   material: 'material <plastic|metal|matte|glass>',
   roughness:'roughness <0-1>',
   metalness:'metalness <0-1>',
+  animate:  'animate <hover|tremor|shiver|breathe|reactive|alive|liquid|magnetic|glitch|breathing-architecture|clear>',
+  fx:       'fx <preset>   alias de animate',
+  demo:     'demo <reactive|cinematic|portfolio>',
+  timeline: 'timeline <cinematic|portfolio|pulse|stop>',
   rename:   'rename <newname>',
   export:   'export [filename.stl]',
   exportar: 'exportar [nombre] [escenas]',

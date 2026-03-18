@@ -1,0 +1,102 @@
+{
+  "name": "3D Search - Sketchfab",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "sf-trigger-001",
+      "name": "Trigger Sub-Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.sketchfab.com/v3/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "type", "value": "models" },
+            { "name": "q", "value": "={{ $json.query }}" },
+            { "name": "downloadable", "value": "true" },
+            { "name": "count", "value": "={{ $json.limit || 5 }}" },
+            { "name": "sort_by", "value": "-relevance" },
+            { "name": "file_format", "value": "gltf" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "sf-http-001",
+      "name": "GET Sketchfab Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "SKETCHFAB_CRED_ID",
+          "name": "Sketchfab API Token"
+        }
+      },
+      "notes": "Token de API en: https://sketchfab.com/settings#password\nNota: Sketchfab no ofrece STL via API. Descarga en glTF/GLB únicamente."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalizar respuesta de Sketchfab al formato RenderHub\nconst response = $input.first().json;\nconst results = response.results || [];\nconst query = $('Trigger Sub-Workflow').first().json.query || '';\n\nconst normalized = results.map(item => {\n  // Extraer mejor thumbnail disponible\n  const thumbs = item.thumbnails?.images || [];\n  const thumb = thumbs.find(t => t.width >= 200)?.url ||\n                thumbs[0]?.url || '';\n\n  // Categorías/tags\n  const tags = (item.categories || []).map(c => c.name)\n    .concat((item.tags || []).map(t => t.name))\n    .slice(0, 8);\n\n  return {\n    platform: 'Sketchfab',\n    id: item.uid || '',\n    name: item.name || '',\n    description: (item.description || '').slice(0, 300),\n    thumbnail_url: thumb,\n    page_url: item.viewerUrl || `https://sketchfab.com/models/${item.uid}`,\n    download_url: null,\n    stl_direct: false,\n    download_api: `https://api.sketchfab.com/v3/models/${item.uid}/download`,\n    format_note: 'API entrega glTF/GLB. Para STL usar: https://sketchfab.com/3d-models/' + item.uid,\n    creator: item.user?.username || '',\n    likes: item.likeCount || 0,\n    views: item.viewCount || 0,\n    downloads: item.downloadCount || 0,\n    tags\n  };\n});\n\nreturn {\n  platform: 'Sketchfab',\n  query,\n  count: normalized.length,\n  results: normalized\n};"
+      },
+      "id": "sf-code-001",
+      "name": "Normalizar Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.sketchfab.com/v3/models/{{ $json.id }}/download",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "id": "sf-dl-001",
+      "name": "GET Download URL (opcional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 480],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "SKETCHFAB_CRED_ID",
+          "name": "Sketchfab API Token"
+        }
+      },
+      "notes": "Nodo opcional: obtiene URL firmada de descarga para un modelo específico.\nConectar manualmente si se necesita obtener URL de descarga por uid.\nRespuesta: { gltf: { url, size }, usdz: { url, size } }"
+    }
+  ],
+  "connections": {
+    "Trigger Sub-Workflow": {
+      "main": [
+        [{ "node": "GET Sketchfab Search", "type": "main", "index": 0 }]
+      ]
+    },
+    "GET Sketchfab Search": {
+      "main": [
+        [{ "node": "Normalizar Resultados", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "sketchfab-search-v1",
+  "meta": {
+    "instanceId": "renderhub-sketchfab-search",
+    "notes": "INPUT esperado: { query: string, limit?: number }\nOUTPUT: { platform, query, count, results[] }\nCredencial: API Token desde https://sketchfab.com/settings#password\nIMPORTANTE: Sketchfab no entrega STL via API. Solo glTF/GLB/USDZ.\nÚsalo como referencia visual. Para STL usa Thingiverse o MyMiniFactory."
+  },
+  "tags": ["renderhub", "3d", "sketchfab", "search", "gltf"]
+}

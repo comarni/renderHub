@@ -171,6 +171,12 @@ export class ViewportOverlay {
 
       this._showPressedKeys(e);
 
+      // CAD snapping shortcuts (Ctrl+0..3) are handled in CadModule.
+      // Ignore here to avoid camera-view shortcut collisions.
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && ['Digit0', 'Digit1', 'Digit2', 'Digit3'].includes(e.code)) {
+        return;
+      }
+
       // Extended editor shortcuts for quick validation of mesh-edit features
       if (e.shiftKey && e.code === 'Slash') {
         e.preventDefault();
@@ -233,9 +239,16 @@ export class ViewportOverlay {
       }
 
       switch (e.key.toLowerCase()) {
-        case 'g': this.sel.setMode('translate'); this._setActiveTransformBtn('translate'); break;
-        case 'r': this.sel.setMode('rotate');    this._setActiveTransformBtn('rotate');    break;
-        case 's': this.sel.setMode('scale');     this._setActiveTransformBtn('scale');     break;
+        case 'm':
+        case 'g':
+          this._applyTransformShortcut('translate');
+          break;
+        case 'r':
+          this._applyTransformShortcut('rotate');
+          break;
+        case 's':
+          this._applyTransformShortcut('scale');
+          break;
         case 'escape':
           this.sel.clearSubSelection();
           this.sel.deselectAll();
@@ -275,6 +288,16 @@ export class ViewportOverlay {
           break;
       }
     });
+  }
+
+  _applyTransformShortcut(mode) {
+    this.sel.setMode(mode);
+    this._setActiveTransformBtn(mode);
+    const label = document.getElementById('active-tool-label');
+    if (label) {
+      const labels = { translate: 'Move', rotate: 'Rotate', scale: 'Scale' };
+      label.textContent = labels[mode] || mode;
+    }
   }
 
 

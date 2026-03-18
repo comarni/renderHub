@@ -1,0 +1,95 @@
+{
+  "name": "3D Search - Cults3D",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "c3-trigger-001",
+      "name": "Trigger Sub-Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar query GraphQL para Cults3D\nconst input = $input.first().json;\nconst query = input.query || '';\nconst limit = input.limit || 5;\n\nreturn {\n  graphqlBody: {\n    query: `{\n  creations(\n    limit: ${limit},\n    query: \"${query.replace(/\"/g, '\\\\\"')}\",\n    free: true\n  ) {\n    id\n    name\n    description\n    imageUrls\n    fileUrls\n    tagNames\n    viewsCount\n    creationLikesCount\n    madeWithAi\n    creator {\n      nick\n    }\n  }\n}`\n  },\n  originalQuery: query\n};"
+      },
+      "id": "c3-build-001",
+      "name": "Build GraphQL Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://cults3d.com/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.graphqlBody) }}",
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "c3-http-001",
+      "name": "POST Cults3D GraphQL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CULTS3D_CRED_ID",
+          "name": "Cults3D (usuario + API Key)"
+        }
+      },
+      "notes": "Credencial: Basic Auth con username=tu_usuario_cults3d y password=tu_api_key\nAPI Key en: https://cults3d.com/en/api/keys\nNota: API solo devuelve metadata. Descarga de archivos requiere acceso web."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalizar respuesta de Cults3D al formato RenderHub\nconst response = $input.first().json;\nconst items = response?.data?.creations || [];\nconst query = $('Build GraphQL Query').first().json.originalQuery || '';\n\nconst BASE_URL = 'https://cults3d.com/en/3d-model/';\n\nconst normalized = items.map(item => {\n  const thumbnail = (item.imageUrls || [])[0] || '';\n  const tags = (item.tagNames || []).slice(0, 8);\n\n  return {\n    platform: 'Cults3D',\n    id: String(item.id),\n    name: item.name || '',\n    description: (item.description || '').replace(/<[^>]*>/g, '').slice(0, 300),\n    thumbnail_url: thumbnail,\n    page_url: `${BASE_URL}${item.id}`,\n    download_url: null,\n    stl_direct: false,\n    api_note: 'Cults3D API solo entrega metadata. Descarga en página web.',\n    ai_generated: item.madeWithAi || false,\n    creator: item.creator?.nick || '',\n    likes: item.creationLikesCount || 0,\n    views: item.viewsCount || 0,\n    tags\n  };\n});\n\nreturn {\n  platform: 'Cults3D',\n  query,\n  count: normalized.length,\n  results: normalized\n};"
+      },
+      "id": "c3-code-001",
+      "name": "Normalizar Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Trigger Sub-Workflow": {
+      "main": [
+        [{ "node": "Build GraphQL Query", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build GraphQL Query": {
+      "main": [
+        [{ "node": "POST Cults3D GraphQL", "type": "main", "index": 0 }]
+      ]
+    },
+    "POST Cults3D GraphQL": {
+      "main": [
+        [{ "node": "Normalizar Resultados", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "cults3d-search-v1",
+  "meta": {
+    "instanceId": "renderhub-cults3d-search",
+    "notes": "INPUT esperado: { query: string, limit?: number }\nOUTPUT: { platform, query, count, results[] }\nCredencial: Basic Auth - usuario = cults3d username, password = API Key\nGenerar API Key en: https://cults3d.com/en/api/keys\nIMPORTANTE: La API de Cults3D solo entrega metadata/imágenes, NO archivos descargables."
+  },
+  "tags": ["renderhub", "3d", "cults3d", "search", "graphql"]
+}

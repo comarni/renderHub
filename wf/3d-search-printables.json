@@ -1,0 +1,88 @@
+{
+  "name": "3D Search - Printables (Prusa)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "pr-trigger-001",
+      "name": "Trigger Sub-Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar query GraphQL para Printables\nconst input = $input.first().json;\nconst query = input.query || '';\nconst limit = input.limit || 5;\n\nreturn {\n  graphqlQuery: {\n    operationName: 'SearchPrints',\n    variables: {\n      query: query,\n      limit: limit,\n      categoryId: null,\n      ordering: '-download_count'\n    },\n    query: `query SearchPrints($query: String, $limit: Int, $categoryId: ID, $ordering: String) {\n  prints(\n    query: $query\n    limit: $limit\n    categoryId: $categoryId\n    ordering: $ordering\n  ) {\n    items {\n      id\n      name\n      slug\n      summary\n      firstImage {\n        filePath\n        rotation\n      }\n      user {\n        publicUsername\n        avatarFilePath\n      }\n      downloadCount\n      likeCount\n      makeCount\n      category {\n        name\n      }\n      tags {\n        name\n      }\n    }\n  }\n}`\n  },\n  originalQuery: query\n};"
+      },
+      "id": "pr-code-build",
+      "name": "Build GraphQL Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.printables.com/graphql/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "User-Agent", "value": "RenderHub-3DBrain/1.0" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.graphqlQuery) }}",
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "pr-http-001",
+      "name": "POST Printables GraphQL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300],
+      "notes": "API GraphQL no oficial pero pública de Printables/Prusa Research. Sin autenticación requerida para búsqueda."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalizar respuesta de Printables al formato RenderHub\nconst response = $input.first().json;\nconst items = response?.data?.prints?.items || [];\nconst query = $('Build GraphQL Query').first().json.originalQuery || '';\n\nconst BASE_IMG = 'https://media.printables.com/';\nconst BASE_URL = 'https://www.printables.com/model/';\n\nconst normalized = items.map(item => {\n  const thumbPath = item.firstImage?.filePath || '';\n  const thumbnail = thumbPath.startsWith('http') ? thumbPath : BASE_IMG + thumbPath;\n  const tags = (item.tags || []).map(t => t.name).slice(0, 8);\n\n  return {\n    platform: 'Printables',\n    id: String(item.id),\n    name: item.name || '',\n    description: item.summary || '',\n    thumbnail_url: thumbnail,\n    page_url: `${BASE_URL}${item.id}-${item.slug || item.id}`,\n    download_url: `${BASE_URL}${item.id}-${item.slug || item.id}/files`,\n    stl_direct: false,\n    creator: item.user?.publicUsername || '',\n    likes: item.likeCount || 0,\n    downloads: item.downloadCount || 0,\n    makes: item.makeCount || 0,\n    category: item.category?.name || '',\n    tags\n  };\n});\n\nreturn {\n  platform: 'Printables',\n  query,\n  count: normalized.length,\n  results: normalized\n};"
+      },
+      "id": "pr-code-norm",
+      "name": "Normalizar Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Trigger Sub-Workflow": {
+      "main": [
+        [{ "node": "Build GraphQL Query", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build GraphQL Query": {
+      "main": [
+        [{ "node": "POST Printables GraphQL", "type": "main", "index": 0 }]
+      ]
+    },
+    "POST Printables GraphQL": {
+      "main": [
+        [{ "node": "Normalizar Resultados", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "printables-search-v1",
+  "meta": {
+    "instanceId": "renderhub-printables-search",
+    "notes": "INPUT esperado: { query: string, limit?: number }\nOUTPUT: { platform, query, count, results[] }\nPrintables (Prusa Research) - API GraphQL pública sin autenticación.\nDescarga STL requiere acceso web (no API directa). Se devuelve URL de página."
+  },
+  "tags": ["renderhub", "3d", "printables", "prusa", "search", "graphql"]
+}

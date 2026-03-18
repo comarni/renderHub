@@ -22,7 +22,7 @@ export class ObjectManager {
 
     // Counters for auto-naming
     this._counter = {
-      box: 0, sphere: 0, cylinder: 0, plane: 0, web: 0,
+      box: 0, sphere: 0, cylinder: 0, plane: 0, web: 0, video: 0,
       dog: 0, cat: 0, car: 0, house: 0, tree: 0, chair: 0, table: 0, robot: 0, human: 0,
       airplane: 0, boat: 0, building: 0, cloud: 0, streetlight: 0,
     };
@@ -60,8 +60,10 @@ export class ObjectManager {
    * @param {string}       type
    * @returns {ObjectRecord}
    */
-  addGroup(group, displayName, type) {
-    const id = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  addGroup(group, displayName, type, options = {}) {
+    const requestedId = options?.id;
+    const fallbackId = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const id = requestedId && !this.objects.has(requestedId) ? requestedId : fallbackId;
 
     group.name                = displayName;
     group.userData.editorId   = id;
@@ -151,6 +153,12 @@ export class ObjectManager {
     mesh.receiveShadow = true;
     mesh.position.set(0, Math.max(1, height * 0.5), 0);
 
+    const frameGeo = new THREE.EdgesGeometry(geo);
+    const frameMat = new THREE.LineBasicMaterial({ color: options?.frameColor || 0xffc857 });
+    const frame = new THREE.LineSegments(frameGeo, frameMat);
+    frame.position.z = 0.0015;
+    mesh.add(frame);
+
     const id = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const displayName = options?.name || this._generateName('plane');
 
@@ -159,6 +167,8 @@ export class ObjectManager {
     mesh.userData.editorName = displayName;
     mesh.userData.editorType = 'image';
     mesh.userData.imagePlane = true;
+    mesh.userData.webSource = options?.source || { mode: 'image', value: '' };
+    mesh.userData.webFrameRef = frame;
 
     const record = { id, name: displayName, type: 'image', mesh, material: mat };
     this.objects.set(id, record);
@@ -211,6 +221,56 @@ export class ObjectManager {
     mesh.userData.webFrameRef = frame;
 
     const record = { id, name: displayName, type: 'web', mesh, material: mat };
+    this.objects.set(id, record);
+    this.scene.add(mesh);
+
+    EventBus.emit('state:changed', { type: 'scene' });
+    return record;
+  }
+
+  /**
+   * Add a local video file as a CSS3D plane (like web plane but showing a <video> element).
+   * @param {{name?: string, width?: number, height?: number, source: { mode: 'video', value: string }, frameColor?: number}} options
+   * @returns {ObjectRecord}
+   */
+  addVideoPlane(options) {
+    const width = options?.width || 2.4;
+    const height = options?.height || 1.35;
+
+    const geo = new THREE.PlaneGeometry(width, height);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x050d08,
+      emissive: 0x020805,
+      roughness: 0.95,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.94,
+      side: THREE.DoubleSide,
+    });
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.position.set(0, Math.max(1.1, height * 0.6), 0);
+
+    const frameGeo = new THREE.EdgesGeometry(geo);
+    const frameMat = new THREE.LineBasicMaterial({ color: options?.frameColor || 0x44ff88 });
+    const frame = new THREE.LineSegments(frameGeo, frameMat);
+    frame.position.z = 0.0015;
+    mesh.add(frame);
+
+    const id = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const displayName = options?.name || this._generateName('video');
+
+    mesh.name = displayName;
+    mesh.userData.editorId = id;
+    mesh.userData.editorName = displayName;
+    mesh.userData.editorType = 'video';
+    mesh.userData.videoPlane = true;
+    mesh.userData.webSource = options?.source || { mode: 'video', value: '' };
+    mesh.userData.webFrameRef = frame;
+
+    const record = { id, name: displayName, type: 'video', mesh, material: mat };
     this.objects.set(id, record);
     this.scene.add(mesh);
 
